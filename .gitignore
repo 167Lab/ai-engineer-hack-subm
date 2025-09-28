@@ -1,0 +1,49 @@
+/.cursor
+/venv
+/tests
+/Файлы для вайб-кодинга
+to-do.md
+data_structure_analyzer.py
+# Ignore ClickHouse runtime
+/data/clickhouse/data/
+/data/clickhouse/metadata/
+/data/clickhouse/metadata_dropped/
+/data/clickhouse/store/
+/data/clickhouse/tmp/
+/data/clickhouse/user_defined/
+/data/clickhouse/user_files/
+/data/clickhouse/user_scripts/
+/data/clickhouse/uuid/
+/data/clickhouse/access/
+/data/clickhouse/flags/
+/data/clickhouse/dictionaries_lib/
+/data/clickhouse/format_schemas/
+/data/clickhouse/preprocessed_configs/
+# Ignore Postgres runtime
+/data/postgres/
+# Ignore Hadoop runtime
+/data/hadoop/
+
+/logs
+
+# Node.js
+/frontend/node_modules/
+/frontend/dist/
+
+
+/sample_data/
+
+__pycache__/
+*.py[cod]
+*.pyo
+/infra/airflow/dags/__pycache__/
+
+
+.clinerules/byterover-rules.md
+.kilocode/rules/byterover-rules.md
+.roo/rules/byterover-rules.md
+.windsurf/rules/byterover-rules.md
+.cursor/rules/byterover-rules.mdc
+.kiro/steering/byterover-rules.md
+.qoder/rules/byterover-rules.md
+.augment/rules/byterover-rules.md

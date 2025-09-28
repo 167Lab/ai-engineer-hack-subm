@@ -1,0 +1,2 @@
+hdfs==2.7.2
+apache-airflow-providers-apache-hdfs==4.1.0
