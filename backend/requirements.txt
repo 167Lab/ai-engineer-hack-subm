@@ -9,3 +9,5 @@ ollama
 langgraph
 pandas
 numpy
+# Memory-safe JSON streaming (для больших JSON файлов)
+ijson==3.2.3

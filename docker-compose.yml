@@ -13,11 +13,21 @@ services:
       retries: 5
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
 
   airflow-webserver:
     build: ./infra/airflow
     container_name: airflow-webserver
-    command: webserver
+    command: |
+      bash -c "
+      chown -R airflow:root /opt/airflow/dags &&
+      chmod -R 664 /opt/airflow/dags/*.py &&
+      mkdir -p /opt/airflow/data/temp &&
+      mkdir -p /opt/airflow/data/output &&
+      chown -R airflow:root /opt/airflow/data &&
+      airflow webserver
+      "
+    user: root
     depends_on:
       postgres:
         condition: service_healthy
@@ -39,7 +49,13 @@ services:
   airflow-scheduler:
     build: ./infra/airflow
     container_name: airflow-scheduler
-    command: scheduler
+    command: |
+      bash -c "
+      chown -R airflow:root /opt/airflow/dags &&
+      chmod -R 664 /opt/airflow/dags/*.py &&
+      su airflow -c 'airflow scheduler'
+      "
+    user: root
     depends_on:
       postgres:
         condition: service_healthy
@@ -101,6 +117,9 @@ services:
   # Базы данных
   clickhouse:
     image: clickhouse/clickhouse-server:23.3
+    ports:
+      - "8123:8123"
+      - "9001:9000"
     volumes:
       - ./data/clickhouse:/var/lib/clickhouse
       
@@ -111,11 +130,21 @@ services:
       - ./backend:/app
       - ./sample_data:/app/data
       - ./infra/airflow/dags:/opt/airflow/dags
+      - /tmp:/tmp  # Временная директория для больших файлов
     ports:
       - "8000:8000"
     depends_on:
       - postgres
       - clickhouse
+    # Оптимизация памяти для обработки больших файлов
+    mem_limit: 2g
+    mem_reservation: 512m
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DJANGO_SETTINGS_MODULE=config.settings
+      # Python оптимизации для работы с памятью
+      - PYTHONOPTIMIZE=1
+      - PYTHONDONTWRITEBYTECODE=1
       
   # Frontend UI
   frontend:

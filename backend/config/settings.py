@@ -27,10 +27,21 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
-# Настройки для больших файлов (до 500 МБ)
-DATA_UPLOAD_MAX_MEMORY_SIZE = 524288000  # 500 МБ
-FILE_UPLOAD_MAX_MEMORY_SIZE = 524288000  # 500 МБ
+# Оптимизированные настройки для работы с большими файлами
+DATA_UPLOAD_MAX_MEMORY_SIZE = 1073741824  # 1 GB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 104857600   # 100 MB (лимит в память)
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10240
+
+# Настройки временных файлов
+FILE_UPLOAD_TEMP_DIR = '/tmp'  # Временная директория для больших файлов
+FILE_UPLOAD_HANDLERS = [
+    'django.core.files.uploadhandler.TemporaryFileUploadHandler',  # Для больших файлов
+    'django.core.files.uploadhandler.MemoryFileUploadHandler',     # Для маленьких файлов
+]
+
+# Размер чанков для streaming обработки
+STREAMING_CHUNK_SIZE = 8192  # 8KB чанки для чтения файлов
+PANDAS_CHUNK_SIZE = 10000    # Количество строк в чанке для pandas
 
 
 # Application definition
