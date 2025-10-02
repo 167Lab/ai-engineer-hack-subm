@@ -1,0 +1,110 @@
+version: 1.0
+
+# Настройки LLM
+llm_config:
+  provider: "hybrid"   # гибридный режим: можно использовать как локальные модели, так и облачные
+  
+  # Настройки Ollama (локальные модели)
+  ollama:
+    enabled: true
+    url: "http://localhost:11434"
+    timeout: 300  # секунд
+    models:
+      input_analysis: "qwen2.5:14b"  # Для анализа входных данных
+      ddl_generation: "llama3.2:latest"  # Для генерации DDL
+      pipeline_generation: "qwen2.5:14b"  # Для генерации пайплайнов
+      report_generation: "llama3.2:latest"  # Для генерации отчетов
+    
+    # Параметры генерации
+    temperature: 0.7
+    max_tokens: 4096
+  
+  # Настройки облачных провайдеров
+  cloud:
+    enabled: false  # на время тестирования
+    provider: "groq"  # openai, anthropic, groq
+    api_key: "${GROQ_API_KEY}"  # Из переменных окружения
+    
+    models:   # здесь будет выбор из доступных моделей
+      input_analysis: "llama-3.3-70b-versatile"
+      ddl_generation: "llama-3.3-70b-versatile"
+      pipeline_generation: "llama-3.3-70b-versatile"  
+      report_generation: "llama-3.3-70b-versatile"
+    
+    temperature: 0.7
+    max_tokens: 4096
+  
+  # Стратегия выбора моделей
+  model_selection:
+    strategy: "auto"  # auto, manual, cost_optimized
+    fallback: true    # Переключение на cloud при недоступности Ollama
+    retry_count: 3    # Количество попыток при ошибках
+
+# Настройки агентов
+agents_config:
+  # Максимальное количество итераций для каждого агента
+  max_iterations: 3
+  
+  # Таймауты для каждого агента (секунды)
+  timeouts:
+    input_analysis: 60
+    ddl_generation: 45
+    pipeline_generation: 60
+    report_generation: 30
+  
+  # Включить подробное логирование
+  verbose: true
+  
+  # Сохранять промежуточные результаты
+  save_intermediate: true
+
+# Настройки инструментов
+tools_config:
+  # Использовать существующие анализаторы
+  use_existing_analyzers: true
+  
+  # Размер образца данных для анализа
+  sample_size: 1000
+  
+  # Максимальный размер файла для анализа (МБ)
+  max_file_size: 100
+
+# Настройки хранилищ данных
+storage_config:
+  # Доступные хранилища
+  available_storages:
+    - postgres
+    - clickhouse
+    - hdfs
+  
+  # Правила выбора хранилища по умолчанию
+  default_rules:
+    transactional_data: "postgres"
+    analytical_data: "clickhouse"
+    raw_data: "hdfs"
+    time_series: "clickhouse"
+    
+# Настройки генерации пайплайнов
+pipeline_config:
+  # Шаблон DAG по умолчанию
+  default_schedule: "0 0 * * *"  # Ежедневно в полночь
+  
+  # Параметры по умолчанию
+  default_params:
+    retries: 2
+    retry_delay: 0.5  # минут
+    owner: "ai-data-engineer"
+  
+  # Поддерживаемые трансформации
+  supported_transformations:
+    - filter
+    - aggregate
+    - join
+    - deduplicate
+    - dropna
+
+# Пути к файлам
+paths:
+  prompts_dir: "config/prompts"
+  temp_dir: "/tmp/mas_temp"
+  logs_dir: "logs"
