@@ -1,64 +1,348 @@
+"""
+Интеграция мультиагентной системы с Django API
+"""
 import asyncio
-from langgraph.graph import StateGraph
-# Correcting the import path based on Django app structure
-from .nodes import AnalystNode, TechWriterNode, ReviewerNode
+import logging
+import uuid
+from datetime import datetime
+from typing import Dict, Any, Optional
+from pathlib import Path
+
+from .core import (
+    MASState,
+    LLMManager,
+    create_mas_graph,
+    create_interactive_mas_graph
+)
+
+logger = logging.getLogger(__name__)
+
 
 class MASIntegration:
+    """
+    Класс для интеграции МАС с Django REST API
+    """
+    
     def __init__(self):
-        # Using StateGraph which is more common and flexible
-        self.workflow = StateGraph(dict)
-        self._setup()
-
-    def _setup(self):
-        self.workflow.add_node("analyst", self._execute_analyst)
-        self.workflow.add_node("tech_writer", self._execute_tech_writer)
-        self.workflow.add_node("reviewer", self._execute_reviewer)
+        """Инициализация интеграции МАС"""
+        self.llm_manager = LLMManager()
+        self.graph = create_mas_graph(self.llm_manager)
+        self.interactive_graph = create_interactive_mas_graph(self.llm_manager)
         
-        self.workflow.add_edge("analyst", "tech_writer")
-        self.workflow.add_edge("tech_writer", "reviewer")
+    async def analyze_data_source(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Главная точка входа для анализа источников данных
         
-        self.workflow.set_entry_point("analyst")
-        self.workflow.set_finish_point("reviewer")
+        Args:
+            request_data: Данные запроса от API
+            
+        Returns:
+            Результаты анализа и рекомендации
+        """
+        try:
+            logger.info(f"Начало анализа источника данных: {request_data.get('source_type', 'unknown')}")
+            
+            # Создаем начальное состояние
+            initial_state = self._create_initial_state(request_data)
+            
+            # Запускаем граф МАС
+            result = await self._run_graph(initial_state)
+            
+            # Форматируем результат для API
+            response = self._format_response(result)
+            
+            logger.info("Анализ успешно завершен")
+            return response
+            
+        except Exception as e:
+            logger.error(f"Ошибка анализа источника данных: {e}")
+            return {
+                'status': 'error',
+                'error': str(e),
+                'message': 'Произошла ошибка при анализе источника данных'
+            }
+    
+    async def analyze_with_feedback(self, 
+                                   request_data: Dict[str, Any],
+                                   session_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Анализ с поддержкой обратной связи (для интеграции с фронтендом)
         
-        self.graph = self.workflow.compile()
-
-    def _execute_analyst(self, state):
-        payload = state.get("source_data", {})
-        analyst = AnalystNode()
-        result = analyst(payload)
-        return {"analysis_result": result}
-
-    def _execute_tech_writer(self, state):
-        analysis_result = state.get("analysis_result", {})
-        tech_writer = TechWriterNode()
-        result = tech_writer(analysis_result)
-        return {"tech_writer_result": result}
+        Args:
+            request_data: Данные запроса
+            session_id: ID сессии для продолжения анализа
+            
+        Returns:
+            Результат текущего этапа анализа
+        """
+        try:
+            if session_id and self._has_session(session_id):
+                # Продолжаем существующую сессию
+                state = self._load_session(session_id)
+                
+                # Применяем обратную связь, если есть
+                if 'user_feedback' in request_data:
+                    state['user_feedback'] = request_data['user_feedback']
+                    state['waiting_for_feedback'] = False
+            else:
+                # Создаем новую сессию
+                session_id = str(uuid.uuid4())
+                state = self._create_initial_state(request_data)
+                state['interactive_mode'] = True
+                state['session_id'] = session_id
+            
+            # Запускаем один шаг графа
+            state = await self._run_interactive_step(state)
+            
+            # Сохраняем состояние сессии
+            self._save_session(session_id, state)
+            
+            # Форматируем ответ
+            response = self._format_interactive_response(state, session_id)
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Ошибка интерактивного анализа: {e}")
+            return {
+                'status': 'error',
+                'error': str(e),
+                'session_id': session_id
+            }
+    
+    def _create_initial_state(self, request_data: Dict[str, Any]) -> MASState:
+        """
+        Создание начального состояния для МАС
         
-    def _execute_reviewer(self, state):
-        tech_writer_result = state.get("tech_writer_result", {})
-        reviewer = ReviewerNode()
-        result = reviewer(tech_writer_result)
-        return {"final_result": result}
-
-    async def analyze_data_source(self, payload: dict):
-        # LangGraph's invoke is synchronous, but astream is async.
-        # We'll run the sync invoke in an async-friendly way.
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(
-            None,
-            lambda: self.graph.invoke({
-                "source_data": payload,
-                "task": "analyze_and_recommend"
-            })
+        Args:
+            request_data: Данные запроса
+            
+        Returns:
+            Начальное состояние МАС
+        """
+        state = MASState(
+            messages=[],
+            source_config=request_data,
+            source_type=request_data.get('source_type'),
+            connection_params=request_data.get('connection_params', {}),
+            execution_id=str(uuid.uuid4()),
+            start_time=datetime.now().isoformat(),
+            completed_agents=[],
+            errors=[],
+            warnings=[]
         )
-
-# helper для синхронного контекста (если вдруг вызов из sync-кода)
-def run_async(coro):
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
-    else:
-        # If there's a running loop, we create a task.
-        # This is suitable for calling from async views.
-        return loop.create_task(coro)
+        
+        return state
+    
+    async def _run_graph(self, initial_state: MASState) -> MASState:
+        """
+        Запуск графа МАС
+        
+        Args:
+            initial_state: Начальное состояние
+            
+        Returns:
+            Финальное состояние после выполнения всех агентов
+        """
+        # Запускаем граф синхронно (LangGraph сам управляет асинхронностью)
+        final_state = self.graph.invoke(initial_state)
+        return final_state
+    
+    async def _run_interactive_step(self, state: MASState) -> MASState:
+        """
+        Выполнение одного шага интерактивного графа
+        
+        Args:
+            state: Текущее состояние
+            
+        Returns:
+            Обновленное состояние
+        """
+        # Выполняем один шаг
+        updated_state = self.interactive_graph.invoke(state)
+        return updated_state
+    
+    def _format_response(self, state: MASState) -> Dict[str, Any]:
+        """
+        Форматирование финального ответа для API
+        
+        Args:
+            state: Финальное состояние МАС
+            
+        Returns:
+            Отформатированный ответ
+        """
+        response = {
+            'status': 'success' if not state.get('errors') else 'completed_with_errors',
+            'execution_id': state.get('execution_id'),
+            'analysis_result': {
+                'metadata': state.get('source_metadata', {}),
+                'data_profile': state.get('data_profile', {}),
+                'storage_recommendation': state.get('storage_recommendation'),
+                'storage_reasoning': state.get('storage_reasoning'),
+                'storage_alternatives': state.get('storage_alternatives', [])
+            },
+            'ddl_scripts': state.get('ddl_scripts', []),
+            'pipeline_config': state.get('pipeline_config', {}),
+            'pipeline_code': state.get('pipeline_code', ''),
+            'report': state.get('report', ''),
+            'execution_stats': state.get('execution_stats', {}),
+            'errors': state.get('errors', []),
+            'warnings': state.get('warnings', [])
+        }
+        
+        return response
+    
+    def _format_interactive_response(self, state: MASState, session_id: str) -> Dict[str, Any]:
+        """
+        Форматирование ответа для интерактивного режима
+        
+        Args:
+            state: Текущее состояние
+            session_id: ID сессии
+            
+        Returns:
+            Отформатированный ответ для текущего этапа
+        """
+        current_stage = state.get('current_agent', 'unknown')
+        waiting_for_feedback = state.get('waiting_for_feedback', False)
+        
+        response = {
+            'status': 'waiting_for_feedback' if waiting_for_feedback else 'processing',
+            'session_id': session_id,
+            'current_stage': current_stage,
+            'completed_stages': state.get('completed_agents', []),
+            'data': {}
+        }
+        
+        # Добавляем данные в зависимости от текущего этапа
+        if current_stage == 'input_analysis':
+            response['data'] = {
+                'metadata': state.get('source_metadata', {}),
+                'data_profile': state.get('data_profile', {}),
+                'storage_recommendation': state.get('storage_recommendation'),
+                'storage_reasoning': state.get('storage_reasoning'),
+                'storage_alternatives': state.get('storage_alternatives', [])
+            }
+        elif current_stage == 'ddl_generation':
+            response['data'] = {
+                'ddl_scripts': state.get('ddl_scripts', []),
+                'ddl_recommendations': state.get('ddl_recommendations', {})
+            }
+        elif current_stage == 'pipeline_generation':
+            response['data'] = {
+                'pipeline_config': state.get('pipeline_config', {}),
+                'pipeline_code': state.get('pipeline_code', ''),
+                'transformations': state.get('transformations', [])
+            }
+        elif current_stage == 'report_generation':
+            response['data'] = {
+                'report': state.get('report', ''),
+                'report_sections': state.get('report_sections', {}),
+                'execution_stats': state.get('execution_stats', {})
+            }
+        
+        # Добавляем информацию об ошибках, если есть
+        if state.get('errors'):
+            response['errors'] = state['errors']
+        
+        # Если анализ завершен
+        if 'report_generation' in state.get('completed_agents', []):
+            response['status'] = 'completed'
+            response['data']['full_results'] = self._format_response(state)
+        
+        return response
+    
+    def _has_session(self, session_id: str) -> bool:
+        """
+        Проверка наличия сессии
+        
+        Args:
+            session_id: ID сессии
+            
+        Returns:
+            True если сессия существует
+        """
+        session_file = Path(f'/tmp/mas_sessions/{session_id}.json')
+        return session_file.exists()
+    
+    def _load_session(self, session_id: str) -> MASState:
+        """
+        Загрузка состояния сессии
+        
+        Args:
+            session_id: ID сессии
+            
+        Returns:
+            Сохраненное состояние
+        """
+        import json
+        
+        session_file = Path(f'/tmp/mas_sessions/{session_id}.json')
+        
+        with open(session_file, 'r', encoding='utf-8') as f:
+            state_dict = json.load(f)
+        
+        # Преобразуем словарь обратно в MASState
+        state = MASState(**state_dict)
+        return state
+    
+    def _save_session(self, session_id: str, state: MASState):
+        """
+        Сохранение состояния сессии
+        
+        Args:
+            session_id: ID сессии
+            state: Текущее состояние
+        """
+        import json
+        
+        session_dir = Path('/tmp/mas_sessions')
+        session_dir.mkdir(exist_ok=True)
+        
+        session_file = session_dir / f'{session_id}.json'
+        
+        # Конвертируем состояние в сериализуемый формат
+        state_dict = {}
+        for key, value in state.items():
+            if value is not None and not key.startswith('_'):
+                try:
+                    json.dumps(value)  # Проверяем сериализуемость
+                    state_dict[key] = value
+                except (TypeError, ValueError):
+                    # Пропускаем несериализуемые объекты или сохраняем как строку
+                    if hasattr(value, 'content'):
+                        state_dict[key] = str(value.content)
+                    else:
+                        state_dict[key] = str(value)
+        
+        with open(session_file, 'w', encoding='utf-8') as f:
+            json.dump(state_dict, f, ensure_ascii=False, indent=2)
+    
+    async def get_pipeline_code(self, execution_id: str) -> Optional[str]:
+        """
+        Получение сгенерированного кода пайплайна по ID выполнения
+        
+        Args:
+            execution_id: ID выполнения
+            
+        Returns:
+            Код пайплайна или None
+        """
+        # Здесь можно реализовать загрузку из БД или файловой системы
+        # Пока возвращаем заглушку
+        return None
+    
+    async def get_report(self, execution_id: str) -> Optional[str]:
+        """
+        Получение сгенерированного отчета по ID выполнения
+        
+        Args:
+            execution_id: ID выполнения
+            
+        Returns:
+            Отчет в формате Markdown или None
+        """
+        # Здесь можно реализовать загрузку из БД или файловой системы
+        # Пока возвращаем заглушку
+        return None
