@@ -1,8 +1,7 @@
-"""
-Модули для анализа источников данных
+"""Lightweight analyzers package used by streaming upload endpoints.
+
+Provides a minimal HybridFileAnalyzer for CSV/JSON/XML samples so the
+frontend's streaming analysis flow works without heavy dependencies.
 """
 
-from .data_analyzer import DataSourceAnalyzer
-from .database_analyzer import DatabaseSourceAnalyzer
 
-__all__ = ['DataSourceAnalyzer', 'DatabaseSourceAnalyzer']

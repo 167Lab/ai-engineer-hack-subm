@@ -501,7 +501,7 @@ const DataSourceWizard: React.FC = () => {
     };
 
     const onFormFinish = async (values: any) => {
-        const { source_type, file_path, table, file_input_type, uploaded_file } = values;
+        const { source_type, file_path, table, file_input_type } = values;
 
         // *** НОВАЯ ЛОГИКА: Проверяем если файл уже загружен и проанализирован ***
         if (file_input_type === 'upload' && uploadedFile && uploadedFile.uploadCompleted && uploadedFile.analysisResult) {
@@ -541,12 +541,20 @@ const DataSourceWizard: React.FC = () => {
             case SourceType.CSV:
             case SourceType.JSON:
             case SourceType.XML:
-                if (file_input_type === 'upload' && uploaded_file) {
-                    // Этот случай не должен произойти, так как мы проверили выше
-                    message.error('Ошибка: файл не был правильно обработан');
-                    return;
+                if (file_input_type === 'upload') {
+                    // Для локальной загрузки полагаемся на состояние uploadedFile,
+                    // файл уже загружен сервером в шаге немедленной загрузки
+                    if (!uploadedFile || !uploadedFile.uploadCompleted) {
+                        message.warning('⏳ Файл еще не загружен на сервер. Дождитесь завершения загрузки.');
+                        return;
+                    }
+                    connection_params = {
+                        file_name: uploadedFile.name,
+                        is_uploaded: true,
+                        server_processed: true
+                    };
                 } else {
-                    // Для файла на сервере передаем путь
+                    // Для файла, уже лежащего на сервере, передаем путь
                     connection_params = { 
                         file_path,
                         is_uploaded: false 

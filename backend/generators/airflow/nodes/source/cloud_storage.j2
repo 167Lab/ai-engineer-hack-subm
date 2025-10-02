@@ -1,0 +1,12 @@
+# {{ task.ref }} — {{ task.key }}
+def {{ task.ref }}_fn(**context):
+    from include.ops.file_io import bulk_import  # (bucket, prefix, glob, storage, partition_by) -> {"staging_path": "..."}
+    return bulk_import(
+        storage={{ task.params.storage | default("s3") | tojson }},  # "s3"|"gcs"|"hdfs"
+        bucket={{ task.params.bucket | tojson }},
+        prefix={{ task.params.prefix | default("") | tojson }},
+        glob_mask={{ task.params.glob | default("**/*") | tojson }},
+        partition_by={{ task.params.partition_by | default([]) | tojson }}
+    )
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

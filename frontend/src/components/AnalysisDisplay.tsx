@@ -1,7 +1,7 @@
 import React from 'react';
 import { Descriptions, Tag, Progress, Card, Alert } from 'antd';
 import { CheckCircleOutlined } from '@ant-design/icons';
-import { AnalysisResult, ColumnDetails } from '../types';
+import { AnalysisResult } from '../types';
 
 interface AnalysisDisplayProps {
     analysisResult: AnalysisResult | null;
@@ -57,8 +57,12 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ analysisResult }) => 
                 <Descriptions.Item label="Количество колонок">{column_count}</Descriptions.Item>
 
                 {data_quality && (
-                    <Descriptions.Item label="Качество данных" span={2}>
-                        <Progress percent={Math.round(data_quality.completeness_score * 100)} status="active" />
+                <Descriptions.Item label="Качество данных" span={2}>
+                    {(() => {
+                        const score = data_quality.completeness_score ?? 100;
+                        const percent = score > 1 ? Math.round(score) : Math.round(score * 100);
+                        return <Progress percent={percent} status="active" />;
+                    })()}
                         <div style={{ marginTop: 8 }}>
                             <Tag color="volcano">Пропущено значений: {data_quality.total_nulls}</Tag>
                             <Tag color="red">Дубликатов строк: {data_quality.duplicate_rows}</Tag>
@@ -88,18 +92,29 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ analysisResult }) => 
             </Descriptions>
 
             <h4 style={{ marginTop: 24 }}>Анализ колонок:</h4>
-            {columns && Object.entries(columns).map(([colName, colDetails]: [string, ColumnDetails]) => (
-                <Card key={colName} size="small" title={colName} style={{ marginBottom: 16 }}>
-                    <Descriptions column={1} size="small">
-                        <Descriptions.Item label="Тип данных"><Tag>{colDetails.dtype}</Tag></Descriptions.Item>
-                        <Descriptions.Item label="Пропущено">{`${colDetails.null_count} (${colDetails.null_percentage.toFixed(2)}%)`}</Descriptions.Item>
-                        <Descriptions.Item label="Уникальных значений">{colDetails.unique_count}</Descriptions.Item>
-                        <Descriptions.Item label="Примеры значений">
-                            {colDetails.sample_values.map((val: string, i: number) => <Tag key={i} color="blue">{val}</Tag>)}
-                        </Descriptions.Item>
-                    </Descriptions>
-                </Card>
-            ))}
+            {columns && Object.entries(columns).map(([colName, cd]: [string, any]) => {
+                // Support two shapes: ColumnDetails or simple dtype string
+                const isSimple = typeof cd === 'string';
+                const dtype = isSimple ? cd : cd.dtype;
+                const nullCount = isSimple ? (data_quality?.null_counts?.[colName] ?? 0) : (cd.null_count ?? 0);
+                const perc = row_count ? (nullCount / row_count * 100) : 0;
+                const uniqueCount = isSimple ? '-' : (cd.unique_count ?? '-');
+                const samples: string[] = isSimple ? [] : (cd.sample_values ?? []);
+                return (
+                    <Card key={colName} size="small" title={colName} style={{ marginBottom: 16 }}>
+                        <Descriptions column={1} size="small">
+                            <Descriptions.Item label="Тип данных"><Tag>{dtype}</Tag></Descriptions.Item>
+                            <Descriptions.Item label="Пропущено">{`${nullCount} (${perc.toFixed(2)}%)`}</Descriptions.Item>
+                            <Descriptions.Item label="Уникальных значений">{uniqueCount}</Descriptions.Item>
+                            {!!samples.length && (
+                                <Descriptions.Item label="Примеры значений">
+                                    {samples.map((val: string, i: number) => <Tag key={i} color="blue">{val}</Tag>)}
+                                </Descriptions.Item>
+                            )}
+                        </Descriptions>
+                    </Card>
+                );
+            })}
         </Card>
     );
 };

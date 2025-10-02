@@ -1,0 +1,12 @@
+# {{ task.ref }} — {{ task.key }}
+def {{ task.ref }}_fn(**context):
+    from include.ops.sink import export_files  # (data_ref, fmt, path, options)
+    data_ref = context["ti"].xcom_pull(task_ids="{{ task.params.get('from') }}")
+    return export_files(
+        data_ref=data_ref,
+        fmt={{ task.params.format | default("csv") | tojson }},     # "csv"|"json"|"xlsx"
+        path={{ task.params.path | tojson }},
+        options={{ task.params.get("options", {}) | tojson }}
+    )
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

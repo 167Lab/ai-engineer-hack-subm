@@ -1,0 +1,12 @@
+# {{ task.ref }} — Audit.Log
+def {{ task.ref }}_fn(**context):
+    from include.utils.audit import log_event  # (event, payload)
+    payload = {
+        "pipeline": context["dag"].dag_id,
+        "run_id": context["ti"].run_id,
+        "extra": {{ task.params.get("extra", {}) | tojson }}
+    }
+    log_event(event={{ task.params.get("event","mark") | tojson }}, payload=payload)
+    return payload
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

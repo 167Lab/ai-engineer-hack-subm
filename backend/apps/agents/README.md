@@ -20,7 +20,7 @@ backend/apps/agents/
 │   ├── state.py              # Определение состояния
 │   ├── llm_manager.py        # Управление LLM
 │   ├── agent_executor.py     # Базовый исполнитель
-│   └── graph.py              # LangGraph граф
+│   └── graph.py              # LangGraph граф (устарело)
 ├── agents/                    # Реализация агентов
 │   ├── input_analyzer.py     # Анализ данных
 │   ├── ddl_generator.py      # Генерация DDL
@@ -41,7 +41,7 @@ cd backend
 pip install -r requirements.txt
 
 # Дополнительные зависимости для МАС
-pip install langchain langgraph langchain-ollama langchain-groq
+pip install langchain langchain-ollama
 ```
 
 ### 2. Настройка Ollama (для локальных моделей)
@@ -64,7 +64,7 @@ ollama list
 
 ```yaml
 llm_config:
-  provider: "hybrid"  # ollama, openai, groq, hybrid
+  provider: "ollama"
   
   ollama:
     enabled: true
@@ -92,10 +92,10 @@ python test_mas.py
 ### Через Django API
 
 ```python
-from apps.agents.integration import MASIntegration
+from apps.agents.integration import LLMIntegration
 
-# Создание экземпляра МАС
-mas = MASIntegration()
+# Создание экземпляра интеграции
+mas = LLMIntegration()
 
 # Анализ источника данных
 request_data = {
@@ -219,11 +219,11 @@ response = llm.invoke("Test message")
 
 ```python
 # views.py
-from apps.agents.integration import MASIntegration
+from apps.agents.integration import LLMIntegration
 
 class AnalyzeDataSourceView(APIView):
     def post(self, request):
-        mas = MASIntegration()
+        mas = LLMIntegration()
         result = asyncio.run(
             mas.analyze_data_source(request.data)
         )

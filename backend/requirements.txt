@@ -5,20 +5,15 @@ psycopg2-binary
 clickhouse-driver
 hdfs
 jinja2
-ollama
-langgraph
 pandas
 numpy
 # Memory-safe JSON streaming (для больших JSON файлов)
 ijson==3.2.3
 
-# LLM и агенты
-ollama==0.1.7
-langchain==0.1.0
-langgraph==0.0.20
-langchain-core==0.1.0
-langchain-community==0.0.10
-langchain-ollama==0.0.1
+# LLM и агенты (не ставить версии, проблемы с совместимостью)
+ollama
+langchain
+langchain-ollama
 
 # Опциональные провайдеры LLM (на будущее)
 # langchain-openai==0.0.5
@@ -27,5 +22,5 @@ langchain-ollama==0.0.1
 
 # Дополнительные зависимости
 pyyaml==6.0
-aiofiles==23.0.0
+aiofiles==23.2.1
 python-dotenv==1.0.0

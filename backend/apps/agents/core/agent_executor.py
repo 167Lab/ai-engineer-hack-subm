@@ -1,5 +1,5 @@
 """
-Базовый исполнитель агентов МАС
+Исполнитель ИИ-инженера
 """
 import os
 import yaml
@@ -42,7 +42,7 @@ class AgentExecutor:
         self.base_dir = Path(__file__).parent.parent
         self.general_config = self._load_general_config()
         
-        # Загружаем промпт для агента
+        # Загружаем промпт для агента (из объединенного файла секций)
         self.prompt = self._load_prompt()
         
         # Получаем LLM для агента
@@ -64,12 +64,24 @@ class AgentExecutor:
             return {}
     
     def _load_prompt(self) -> str:
-        """Загрузка промпта для агента"""
-        prompt_path = self.base_dir / 'config' / 'prompts' / f'{self.agent_name}_prompt.yaml'
-        
-        if prompt_path.exists():
+        """Загрузка промпта для агента из unified_prompt.yaml или legacy файла"""
+        unified_path = self.base_dir / 'config' / 'prompts' / 'unified_prompt.yaml'
+        if unified_path.exists():
             try:
-                with open(prompt_path, 'r', encoding='utf-8') as f:
+                with open(unified_path, 'r', encoding='utf-8') as f:
+                    unified = yaml.safe_load(f)
+                    sections = unified.get('sections', {}) if isinstance(unified, dict) else {}
+                    section = sections.get(self.agent_name)
+                    if section:
+                        return self._transform_prompt(section)
+            except Exception as e:
+                logger.error(f"Ошибка загрузки unified промпта: {e}")
+        
+        # Fallback: legacy отдельные файлы
+        legacy_path = self.base_dir / 'config' / 'prompts' / f'{self.agent_name}_prompt.yaml'
+        if legacy_path.exists():
+            try:
+                with open(legacy_path, 'r', encoding='utf-8') as f:
                     prompt_config = yaml.safe_load(f)
                     return self._transform_prompt(prompt_config)
             except Exception as e:
@@ -98,31 +110,31 @@ class AgentExecutor:
         return system_prompt
     
     def _get_default_prompt(self) -> str:
-        """Промпт по умолчанию для агента"""
+        """Промпты-заглушки на случай, если с файлом что-то случилось"""
         prompts = {
             'input_analysis': """
-Ты - эксперт по анализу данных. Твоя задача:
+Ты эксперт по анализу данных. Твоя задача:
 1. Проанализировать метаданные и образец данных
 2. Определить тип и структуру данных
 3. Рекомендовать оптимальное хранилище
 Отвечай на русском языке в формате JSON.
 """,
             'ddl_generation': """
-Ты - эксперт по базам данных. Твоя задача:
+Ты эксперт по базам данных. Твоя задача:
 1. Сгенерировать DDL скрипты для создания таблиц
 2. Добавить рекомендации по индексам и партицированию
 3. Оптимизировать структуру для выбранного хранилища
 Отвечай на русском языке.
 """,
             'pipeline_generation': """
-Ты - эксперт по созданию ETL пайплайнов. Твоя задача:
+Ты эксперт по созданию ETL пайплайнов. Твоя задача:
 1. Сгенерировать Airflow DAG для обработки данных
 2. Добавить необходимые трансформации
 3. Настроить расписание и параметры
 Генерируй валидный Python код.
 """,
             'report_generation': """
-Ты - технический писатель. Твоя задача:
+Ты технический писатель. Твоя задача:
 1. Создать подробный отчет о проделанной работе
 2. Обосновать принятые решения
 3. Предоставить рекомендации по оптимизации

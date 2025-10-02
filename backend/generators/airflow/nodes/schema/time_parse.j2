@@ -1,0 +1,13 @@
+# {{ task.ref }} — {{ task.key }}
+def {{ task.ref }}_fn(**context):
+    from include.ops.schema_tools import parse_time  # (data_ref, col, tz, round_to, add_cohort) -> {"staging_path": "..."}
+    data_ref = context["ti"].xcom_pull(task_ids="{{ task.params.get('from') }}")
+    return parse_time(
+        data_ref=data_ref,
+        col={{ task.params.col | tojson }},
+        tz={{ task.params.tz | default("UTC") | tojson }},
+        round_to={{ task.params.round_to | default(None) | tojson }},   # "hour"|"day"|None
+        add_cohort={{ task.params.get("add_cohort", True) | tojson }}
+    )
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)
