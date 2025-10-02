@@ -1,0 +1,3 @@
+# {{ task.ref }} — Orch.Trigger (no-op)
+from airflow.operators.empty import EmptyOperator
+{{ task.ref }} = EmptyOperator(task_id="{{ task.ref }}")

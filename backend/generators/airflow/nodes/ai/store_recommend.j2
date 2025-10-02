@@ -1,0 +1,7 @@
+ # {{ task.ref }} — AI.StoreRecommend
+def {{ task.ref }}_fn(**context):
+    from include.ops.ai import recommend_store  # (profile) -> {"engine":"clickhouse","reason":"..."}
+    profile = context["ti"].xcom_pull(task_ids="{{ task.params.get('from','') }}")
+    return recommend_store(profile=profile)
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

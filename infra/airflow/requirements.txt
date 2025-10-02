@@ -1,0 +1,7 @@
+hdfs==2.7.2
+apache-airflow-providers-apache-hdfs==4.1.0
+# Драйверы для работы с базами данных (доверяем constraints Airflow для версий)
+pandas==2.0.3
+sqlalchemy
+psycopg2-binary==2.9.7
+clickhouse-driver==0.2.7

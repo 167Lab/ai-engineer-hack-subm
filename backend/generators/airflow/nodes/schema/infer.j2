@@ -1,0 +1,10 @@
+# {{ task.ref }} — {{ task.key }}
+def {{ task.ref }}_fn(**context):
+    from include.ops.schema_tools import infer_schema  # (source_ref, sample_rows) -> {"schema": {...}}
+    src = {{ task.params.source_ref | tojson }} if {{ "source_ref" in task.params | tojson }} else None
+    return infer_schema(
+        source_ref=src or context["ti"].xcom_pull(task_ids="{{ task.params.get('from', '') or '' }}"),
+        sample_rows={{ task.params.sample_rows | default(20000) }}
+    )
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

@@ -1,0 +1,12 @@
+# {{ task.ref }} — {{ task.key }}
+def {{ task.ref }}_fn(**context):
+    from include.ops.dq import profile_dataset  # (data_ref or engine+table) -> {"report_path": "...", "stats": {...}}
+    data_ref = context["ti"].xcom_pull(task_ids="{{ task.params.get('from', '') }}")
+    return profile_dataset(
+        data_ref=data_ref,
+        engine={{ task.params.get("engine") | tojson }},
+        table={{ task.params.get("table") | tojson }},
+        sample={{ task.params.get("sample", 50000) }}
+    )
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

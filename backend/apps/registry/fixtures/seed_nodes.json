@@ -1,0 +1,37 @@
+[
+  {
+    "model": "registry.node",
+    "pk": 1,
+    "fields": {
+      "key": "Source.FileRead",
+      "title": "Чтение файлов",
+      "category": "Source",
+      "summary": "CSV/JSON/Parquet/Excel из локали/S3/HDFS/GCS",
+      "io_signature": {"produces": [{"kind": "Batch.FileSet"}], "consumes": []},
+      "tags": ["batch", "file", "s3", "hdfs", "local"]
+    }
+  },
+  {
+    "model": "registry.nodeversion",
+    "pk": 101,
+    "fields": {
+      "node": 1,
+      "semver": "1.0.0",
+      "status": "stable",
+      "param_schema": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {"type": "string"},
+          "format": {"type": "string", "enum": ["auto", "csv", "json", "parquet", "xlsx"], "default": "auto"},
+          "storage": {"type": "string", "enum": ["local", "s3", "hdfs", "gcs"], "default": "local"},
+          "infer_schema": {"type": "boolean", "default": true},
+          "sample_rows": {"type": "integer", "default": 10000}
+        }
+      },
+      "runtimes": {"airflow": {"template": "airflow/nodes/source/file_read.j2"}}
+    }
+  }
+]
+
+

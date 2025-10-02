@@ -1,0 +1,19 @@
+# Runtime volumes / data
+data/
+infra/airflow/logs/
+backend/db.sqlite3
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node/Front
+node_modules/
+dist/
+
+# Env/IDE
+.env
+*.env
+.DS_Store

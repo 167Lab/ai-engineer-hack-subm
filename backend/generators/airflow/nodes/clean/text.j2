@@ -1,0 +1,11 @@
+# {{ task.ref }} — {{ task.key }}
+def {{ task.ref }}_fn(**context):
+    from include.ops.clean import normalize_text  # (data_ref, columns, ops) -> {"staging_path": "..."}
+    data_ref = context["ti"].xcom_pull(task_ids="{{ task.params.get('from') }}")
+    return normalize_text(
+        data_ref=data_ref,
+        columns={{ task.params.columns | tojson }},
+        ops={{ task.params.ops | default(["trim","lower","rm_emoji"]) | tojson }}
+    )
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

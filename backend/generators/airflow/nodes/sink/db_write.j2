@@ -1,0 +1,13 @@
+# {{ task.ref }} — {{ task.key }}
+def {{ task.ref }}_fn(**context):
+    from include.ops.sink import write_table  # (engine, data_ref, table, mode, batch_size)
+    data_ref = context["ti"].xcom_pull(task_ids="{{ task.params.get('from') }}")
+    return write_table(
+        engine={{ task.params.engine | tojson }},
+        data_ref=data_ref,
+        table={{ task.params.table | tojson }},
+        mode={{ task.params.get("mode", "append") | tojson }},
+        batch_size={{ task.params.get("batch_size", 50000) }}
+    )
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

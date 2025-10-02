@@ -1,0 +1,10 @@
+# {{ task.ref }} — AI.QueryAssist
+def {{ task.ref }}_fn(**context):
+    from include.ops.ai import generate_query  # (prompt, dialect, context) -> {"sql":"..."}
+    return generate_query(
+        prompt={{ task.params.prompt | tojson }},
+        dialect={{ task.params.dialect | default("postgres") | tojson }},
+        ctx={{ task.params.get("ctx", {}) | tojson }}
+    )
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

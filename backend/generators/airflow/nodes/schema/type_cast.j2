@@ -1,0 +1,11 @@
+# {{ task.ref }} — {{ task.key }}
+def {{ task.ref }}_fn(**context):
+    from include.ops.schema_tools import cast_types  # (data_ref, casts, locale) -> {"staging_path": "..."}
+    data_ref = context["ti"].xcom_pull(task_ids="{{ task.params.get('from') }}")
+    return cast_types(
+        data_ref=data_ref,
+        casts={{ task.params.casts | default({}) | tojson }},   # {"col":"Int64", ...}
+        locale={{ task.params.locale | default("en_US") | tojson }}
+    )
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

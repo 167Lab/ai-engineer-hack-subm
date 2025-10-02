@@ -1,0 +1,89 @@
+version: 1.0
+
+# Настройки LLM
+llm_config:
+  provider: "ollama"
+  
+  # Настройки Ollama (локальные модели)
+  ollama:
+    enabled: true
+    url: "http://ollama:11434"
+    timeout: 300  # секунд
+    models:
+      input_analysis: "qwen2.5:14b"   # можно использовать другие доступные, в будущем сделаем перечень поддерживаемых моделей
+      ddl_generation: "qwen2.5:14b"
+      pipeline_generation: "qwen2.5:14b"
+      report_generation: "qwen2.5:14b"
+    
+    # Параметры генерации
+    temperature: 0.75
+    max_tokens: 4096
+
+# Настройки агентов
+agents_config:
+  # Максимальное количество итераций для каждого агента
+  max_iterations: 3
+  
+  # Таймауты для каждого агента (секунды)
+  timeouts:
+    input_analysis: 60
+    ddl_generation: 45
+    pipeline_generation: 60
+    report_generation: 30
+  
+  # Включить подробное логирование
+  verbose: true
+  
+  # Сохранять промежуточные результаты
+  save_intermediate: true
+
+# Настройки инструментов
+tools_config:
+  # Использовать существующие анализаторы
+  use_existing_analyzers: true
+  
+  # Размер образца данных для анализа
+  sample_size: 1000
+  
+  # Максимальный размер файла для анализа (МБ)
+  max_file_size: 100
+
+# Настройки хранилищ данных
+storage_config:
+  # Доступные хранилища
+  available_storages:
+    - postgres
+    - clickhouse
+    - hdfs
+  
+  # Правила выбора хранилища по умолчанию
+  default_rules:
+    transactional_data: "postgres"
+    analytical_data: "clickhouse"
+    raw_data: "hdfs"
+    time_series: "clickhouse"
+    
+# Настройки генерации пайплайнов
+pipeline_config:
+  # Шаблон DAG по умолчанию
+  default_schedule: "0 0 * * *"  # Ежедневно в полночь
+  
+  # Параметры по умолчанию
+  default_params:
+    retries: 2
+    retry_delay: 0.5  # минут
+    owner: "ai-data-engineer"
+  
+  # Поддерживаемые трансформации
+  supported_transformations:
+    - filter
+    - aggregate
+    - join
+    - deduplicate
+    - dropna
+
+# Пути к файлам
+paths:
+  prompts_dir: "config/prompts"
+  temp_dir: "/tmp/mas_temp"
+  logs_dir: "logs"

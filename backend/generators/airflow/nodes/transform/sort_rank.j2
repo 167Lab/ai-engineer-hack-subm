@@ -1,0 +1,12 @@
+# {{ task.ref }} — {{ task.key }}
+def {{ task.ref }}_fn(**context):
+    from include.ops.transform import sort_rank  # (data_ref, order_by, partition_by, top_n) -> {"staging_path": "..."}
+    data_ref = context["ti"].xcom_pull(task_ids="{{ task.params.get('from') }}")
+    return sort_rank(
+        data_ref=data_ref,
+        order_by={{ task.params.order_by | tojson }},             # [{"col":"score","dir":"desc"}, ...]
+        partition_by={{ task.params.get("partition_by", []) | tojson }},
+        top_n={{ task.params.get("top_n") | tojson }}
+    )
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

@@ -1,0 +1,13 @@
+# {{ task.ref }} — {{ task.key }}
+def {{ task.ref }}_fn(**context):
+    from include.ops.file_io import read_files  # path, storage, format, infer_schema, sample_rows
+    out = read_files(
+        path={{ task.params.path | tojson }},
+        storage={{ task.params.storage | default("local") | tojson }},
+        fmt={{ task.params.format | default("auto") | tojson }},
+        infer={{ task.params.infer_schema | default(true) | tojson }},
+        sample_rows={{ task.params.sample_rows | default(10000) }}
+    )
+    return out  # {"staging_path": "...", "rows": N, "schema": {...}}
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

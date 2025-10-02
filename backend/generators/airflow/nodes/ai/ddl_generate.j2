@@ -1,0 +1,11 @@
+# {{ task.ref }} — AI.DDLGenerate
+def {{ task.ref }}_fn(**context):
+    from include.ops.ai import generate_ddl  # (spec) -> {"engine":"postgres","ddl":"CREATE TABLE ..."}
+    spec = {
+        "schema": context["ti"].xcom_pull(task_ids="{{ task.params.get('schema_from','') }}"),
+        "target": {{ task.params.get("target", {}) | tojson }},
+        "hints":  {{ task.params.get("hints", {})  | tojson }}
+    }
+    return generate_ddl(spec)
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

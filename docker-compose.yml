@@ -1,0 +1,168 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+  airflow-webserver:
+    build: ./infra/airflow
+    container_name: airflow-webserver
+    command: |
+      bash -c "
+      chown -R airflow:root /opt/airflow/dags &&
+      chmod -R 664 /opt/airflow/dags/*.py &&
+      mkdir -p /opt/airflow/data/temp &&
+      mkdir -p /opt/airflow/data/output &&
+      chown -R airflow:root /opt/airflow/data &&
+      airflow webserver
+      "
+    user: root
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - _AIRFLOW_UID=50000
+      - _AIRFLOW_GID=0
+      - PYTHONPATH=/opt/airflow/dags
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./infra/airflow/dags:/opt/airflow/dags
+      - ./infra/airflow/include:/opt/airflow/dags/include
+      - ./logs:/opt/airflow/logs
+      - ./sample_data:/opt/airflow/data
+
+  airflow-scheduler:
+    build: ./infra/airflow
+    container_name: airflow-scheduler
+    command: |
+      bash -c "
+      chown -R airflow:root /opt/airflow/dags &&
+      chmod -R 664 /opt/airflow/dags/*.py &&
+      su airflow -c 'airflow scheduler'
+      "
+    user: root
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - _AIRFLOW_UID=50000
+      - _AIRFLOW_GID=0
+      - PYTHONPATH=/opt/airflow/dags
+    volumes:
+      - ./infra/airflow/dags:/opt/airflow/dags
+      - ./infra/airflow/include:/opt/airflow/dags/include
+      - ./logs:/opt/airflow/logs
+      - ./sample_data:/opt/airflow/data
+
+  airflow-init:
+    build: ./infra/airflow
+    container_name: airflow-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: /bin/bash
+    command: -c "airflow db init && airflow users create --username admin --password admin --firstname Anonymous --lastname User --role Admin --email admin@example.org"
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - _AIRFLOW_UID=50000
+      - _AIRFLOW_GID=0
+      - PYTHONPATH=/opt/airflow/dags
+    volumes:
+      - ./infra/airflow/dags:/opt/airflow/dags
+      - ./infra/airflow/include:/opt/airflow/dags/include
+
+ # HDFS single-node (NameNode + DataNode)
+  hadoop-namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: hadoop-namenode
+    ports:
+      - "9870:9870"      # WebHDFS + веб-UI NameNode
+      - "9000:9000"      # RPC-порт (то, что в fs.defaultFS)
+    environment:
+      - CLUSTER_NAME=hadoop-demo
+      - CORE_CONF_fs_defaultFS=hdfs://hadoop-namenode:9000
+      - HDFS_CONF_dfs_replication=1
+    volumes:
+      - ./data/hadoop/namenode:/hadoop/dfs/name
+
+  hadoop-datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: hadoop-datanode
+    depends_on:
+      - hadoop-namenode
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://hadoop-namenode:9000
+      - HDFS_CONF_dfs_replication=1
+      # чтобы датанод ждал, пока NN поднимет веб-порт:
+      - SERVICE_PRECONDITION=hadoop-namenode:9870
+    volumes:
+      - ./data/hadoop/datanode:/hadoop/dfs/data
+      
+  # Базы данных
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.3
+    ports:
+      - "8123:8123"
+      - "9001:9000"
+    volumes:
+      - ./data/clickhouse:/var/lib/clickhouse
+      
+  # Backend API
+  backend-api:
+    build: ./backend
+    volumes:
+      - ./backend:/app
+      - ./sample_data:/app/data
+      - ./infra/airflow/dags:/opt/airflow/dags
+      - /tmp:/tmp  # Временная директория для больших файлов
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - clickhouse
+    # Оптимизация памяти для обработки больших файлов
+    mem_limit: 2g
+    mem_reservation: 512m
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DJANGO_SETTINGS_MODULE=config.settings
+      - DJANGO_SQLITE_PATH=/tmp/db.sqlite3
+      # Python оптимизации для работы с памятью
+      - PYTHONOPTIMIZE=1
+      - PYTHONDONTWRITEBYTECODE=1
+      
+  # Frontend UI
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend-api
+
+networks:
+  default:
+    driver: bridge

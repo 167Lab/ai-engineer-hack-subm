@@ -1,0 +1,11 @@
+# {{ task.ref }} — AI.Report
+def {{ task.ref }}_fn(**context):
+    from include.ops.ai import build_report  # (artifacts) -> {"report_path":"..."}
+    artifacts = {
+        "profile": context["ti"].xcom_pull(task_ids="{{ task.params.get('profile_from','') }}"),
+        "ddl":     context["ti"].xcom_pull(task_ids="{{ task.params.get('ddl_from','') }}"),
+        "notes":   {{ task.params.get("notes", "") | tojson }}
+    }
+    return build_report(artifacts)
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)
