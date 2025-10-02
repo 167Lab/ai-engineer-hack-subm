@@ -29,6 +29,9 @@ export interface DataQuality {
     total_nulls: number;
     duplicate_rows: number;
     completeness_score: number;
+    quality_score?: number;  // Для streaming анализа
+    null_counts?: Record<string, number>; // Для streaming анализа
+    issues?: string[];
 }
 
 export interface Recommendations {
@@ -67,6 +70,12 @@ export interface AnalysisResult {
     llm_recommendations?: any;
     error?: string;
     raw_response?: MASAnalysisResult;
+    streaming_info?: {
+        file_size?: number;
+        processed_size?: number;
+        sample_size?: number;
+        analysis_method?: string;
+    };
 }
 
 // Интерфейс для результата развертывания DAG

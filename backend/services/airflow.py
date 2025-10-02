@@ -37,19 +37,51 @@ class AirflowService:
             # Базовый шаблон DAG
             dag_template = self._get_dag_template()
             
+            # Получение параметров из конфигурации
+            source_type = config.get('source_config', {}).get('type', 'csv')
+            target_type = config.get('target_config', {}).get('type', 'postgres')
+            source_path = config.get('source_config', {}).get('path', '/opt/airflow/data/sample.csv')
+            target_table = config.get('target_config', {}).get('table', 'processed_data')
+            
+            # Импорт операций БД для генерации специфичного кода
+            from generators.db_operations import DatabaseOperations
+            
+            # Генерация кода загрузки в зависимости от типа БД
+            if target_type == 'postgres':
+                loader_function = DatabaseOperations.get_postgres_loader_code(dag_id, target_table)
+            elif target_type == 'clickhouse':
+                loader_function = DatabaseOperations.get_clickhouse_loader_code(dag_id, target_table)
+            elif target_type == 'hdfs':
+                loader_function = DatabaseOperations.get_hdfs_loader_code(dag_id, target_table)
+            else:
+                # Fallback для неизвестных типов
+                loader_function = f"""
+        # Сохранение в файл для {target_type}
+        output_path = '/opt/airflow/data/output/{dag_id}_{target_table}.parquet'
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        df.to_parquet(output_path, index=False)
+        logger.info(f"📁 Данные сохранены в файл: {{output_path}}")
+"""
+            
             # Подстановка параметров в шаблон
+            transformed_path = f'/opt/airflow/data/temp/{dag_id}_transformed.parquet'
             dag_content = dag_template.format(
                 dag_id=dag_id,
-                source_type=config.get('source_config', {}).get('type', 'csv'),
-                target_type=config.get('target_config', {}).get('type', 'postgres'),
-                source_path=config.get('source_config', {}).get('path', '/opt/airflow/data/sample.csv'),
-                target_table=config.get('target_config', {}).get('table', 'processed_data'),
+                source_type=source_type,
+                target_type=target_type,
+                source_path=source_path,
+                target_table=target_table,
+                transformed_path=transformed_path,
                 schedule=config.get('schedule', '@daily'),
                 owner=config.get('owner', 'etl-system'),
                 description=config.get('description', f'Auto-generated ETL pipeline: {dag_id}'),
                 start_date='2025, 9, 27',
                 retries=config.get('retries', 1),
-                retry_delay=config.get('retry_delay', 5)
+                retry_delay=config.get('retry_delay', 5),
+                # Новые параметры для улучшенного шаблона
+                extract_function=DatabaseOperations.get_enhanced_extract_code(source_type, source_path),
+                transform_function=DatabaseOperations.get_enhanced_transform_code(),
+                loader_function=loader_function
             )
             
             return dag_content, dag_id
@@ -141,157 +173,53 @@ class AirflowService:
             }
         ]
     
+    def delete_dag_properly(self, dag_id: str) -> Dict[str, Any]:
+        """
+        Правильное удаление DAG - из базы данных И физического файла
+        
+        Args:
+            dag_id: ID DAG для удаления
+            
+        Returns:
+            dict: Результат операции с статусом и сообщением
+        """
+        try:
+            from generators.dag_cleanup_utils import delete_dag_with_cleanup
+            
+            success = delete_dag_with_cleanup(dag_id)
+            
+            if success:
+                return {
+                    "status": "success",
+                    "message": f"DAG '{dag_id}' полностью удален из системы",
+                    "details": {
+                        "database_deleted": True,
+                        "file_deleted": True,
+                        "cache_cleared": True
+                    }
+                }
+            else:
+                return {
+                    "status": "error", 
+                    "message": f"Ошибка при удалении DAG '{dag_id}'",
+                    "details": {
+                        "database_deleted": False,
+                        "file_deleted": False,
+                        "cache_cleared": False
+                    }
+                }
+                
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Критическая ошибка удаления DAG '{dag_id}': {str(e)}",
+                "details": {"exception": str(e)}
+            }
+    
     def _get_dag_template(self) -> str:
-        """Получение базового шаблона DAG"""
-        return """
-from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
-import pandas as pd
-import logging
-
-# Настройка логирования
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-def extract_data():
-    '''Извлечение данных из источника'''
-    logger.info("Начало извлечения данных из {source_type}")
-    
-    try:
-        if '{source_type}' == 'csv':
-            df = pd.read_csv('{source_path}')
-            logger.info(f"Загружено {{len(df)}} строк из CSV")
-        elif '{source_type}' == 'json':
-            df = pd.read_json('{source_path}')
-            logger.info(f"Загружено {{len(df)}} строк из JSON")
-        else:
-            raise ValueError(f"Неподдерживаемый тип источника: {source_type}")
-        
-        # Сохранение во временное расположение
-        temp_path = '/opt/airflow/data/temp/{dag_id}_extracted.parquet'
-        df.to_parquet(temp_path, index=False)
-        logger.info(f"Данные сохранены во временный файл: {{temp_path}}")
-        
-        return temp_path
-        
-    except Exception as e:
-        logger.error(f"Ошибка извлечения данных: {{e}}")
-        raise
-
-def transform_data():
-    '''Трансформация данных'''
-    logger.info("Начало трансформации данных")
-    
-    try:
-        temp_path = '/opt/airflow/data/temp/{dag_id}_extracted.parquet'
-        df = pd.read_parquet(temp_path)
-        
-        # Базовая очистка данных
-        initial_rows = len(df)
-        df = df.dropna()  # Удаление строк с пустыми значениями
-        df = df.drop_duplicates()  # Удаление дубликатов
-        
-        logger.info(f"Трансформация завершена: {{initial_rows}} -> {{len(df)}} строк")
-        
-        # Сохранение трансформированных данных
-        transformed_path = '/opt/airflow/data/temp/{dag_id}_transformed.parquet'
-        df.to_parquet(transformed_path, index=False)
-        
-        return transformed_path
-        
-    except Exception as e:
-        logger.error(f"Ошибка трансформации данных: {{e}}")
-        raise
-
-def load_data():
-    '''Загрузка данных в целевое хранилище'''
-    logger.info("Начало загрузки данных в {target_type}")
-    
-    try:
-        transformed_path = '/opt/airflow/data/temp/{dag_id}_transformed.parquet'
-        df = pd.read_parquet(transformed_path)
-        
-        if '{target_type}' == 'postgres':
-            # Заглушка для PostgreSQL
-            logger.info(f"Загрузка {{len(df)}} строк в PostgreSQL таблицу {target_table}")
-            # Здесь должна быть реальная загрузка в PostgreSQL
-            
-        elif '{target_type}' == 'clickhouse':
-            # Заглушка для ClickHouse  
-            logger.info(f"Загрузка {{len(df)}} строк в ClickHouse таблицу {target_table}")
-            # Здесь должна быть реальная загрузка в ClickHouse
-            
-        else:
-            logger.info(f"Сохранение в файл для {target_type}")
-            output_path = f'/opt/airflow/data/output/{dag_id}_{target_table}.parquet'
-            df.to_parquet(output_path, index=False)
-        
-        logger.info("Загрузка данных завершена успешно")
-        
-    except Exception as e:
-        logger.error(f"Ошибка загрузки данных: {{e}}")
-        raise
-
-# Аргументы по умолчанию для DAG
-default_args = {{
-    'owner': '{owner}',
-    'depends_on_past': False,
-    'start_date': datetime({start_date}),
-    'email_on_failure': False,
-    'email_on_retry': False,
-    'retries': {retries},
-    'retry_delay': timedelta(minutes={retry_delay})
-}}
-
-# Определение DAG
-with DAG(
-    '{dag_id}',
-    default_args=default_args,
-    description='{description}',
-    schedule_interval='{schedule}',
-    catchup=False,
-    tags=['generated', 'etl', '{source_type}', '{target_type}']
-) as dag:
-    
-    # Задача извлечения данных
-    extract_task = PythonOperator(
-        task_id='extract_data',
-        python_callable=extract_data,
-        doc_md='''### Извлечение данных
-        
-        Извлекает данные из источника типа {source_type}
-        Путь к источнику: {source_path}
-        '''
-    )
-    
-    # Задача трансформации данных  
-    transform_task = PythonOperator(
-        task_id='transform_data',
-        python_callable=transform_data,
-        doc_md='''### Трансформация данных
-        
-        Выполняет базовую очистку и трансформацию данных:
-        - Удаление пустых значений
-        - Удаление дубликатов
-        '''
-    )
-    
-    # Задача загрузки данных
-    load_task = PythonOperator(
-        task_id='load_data', 
-        python_callable=load_data,
-        doc_md='''### Загрузка данных
-        
-        Загружает обработанные данные в {target_type}
-        Целевая таблица: {target_table}
-        '''
-    )
-    
-    # Определение зависимостей задач
-    extract_task >> transform_task >> load_task
-"""
+        """Получение улучшенного шаблона DAG с реальными операциями БД"""
+        from generators.db_operations import DatabaseOperations, get_complete_dag_template
+        return get_complete_dag_template()
     
     def _check_airflow_api(self) -> str:
         """Проверка доступности Airflow API"""
@@ -326,3 +254,7 @@ def deploy_dag_to_airflow(dag_data: Dict[str, Any]) -> Dict[str, Any]:
 def get_recs_for_source(source_id: str) -> List[Dict[str, Any]]:
     """Обертка для получения рекомендаций"""
     return _airflow_service.get_recs_for_source(source_id)
+
+def delete_dag_properly(dag_id: str) -> Dict[str, Any]:
+    """Обертка для правильного удаления DAG"""
+    return _airflow_service.delete_dag_properly(dag_id)
