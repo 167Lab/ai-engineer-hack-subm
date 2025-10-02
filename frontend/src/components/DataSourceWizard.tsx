@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Steps, Button, message, Form, Select, Input, Upload, Radio, Space, Alert } from 'antd';
+import { Card, Steps, Button, message, Form, Select, Input, Upload, Radio, Space, Alert, Progress } from 'antd';
 import { UploadOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import { useMutation } from '@tanstack/react-query';
 import { analyzeDataSource } from '../services/api';
@@ -8,53 +8,245 @@ import AnalysisDisplay from './AnalysisDisplay';
 import StorageSelector from './StorageSelector';
 import PipelineConfig, { PipelineConfigData } from './PipelineConfig';
 import DAGPreview from './DAGPreview';
+import { LargeFileUploader, MemorySafeFileReader } from '../utils/fileUploadUtils';
 
 const { Step } = Steps;
 const { Option } = Select;
 
 const sourceTypes = Object.values(SourceType);
 
-const Step1Form = () => {
+const Step1Form = ({ 
+    uploadProgress, 
+    uploadedFile, 
+    setUploadedFile, 
+    setUploadProgress,
+    setAnalysisResult,
+    setSourceConfig
+}: { 
+    uploadProgress: any; 
+    uploadedFile: any;
+    setUploadedFile: any;
+    setUploadProgress: any;
+    setAnalysisResult: any;
+    setSourceConfig: any;
+}) => {
     const form = Form.useFormInstance();
     const sourceType = Form.useWatch('source_type', form);
     const fileInputType = Form.useWatch('file_input_type', form) || 'path';
-    const [uploadedFile, setUploadedFile] = useState<any>(null);
 
-    const handleFileUpload = (file: any) => {
-        // Проверяем размер файла (ограничение 500 МБ для браузера)
-        const maxSize = 500 * 1024 * 1024; // 500 МБ
+    const handleFileUpload = async (file: any) => {
+        // Проверяем размер файла (увеличен лимит до 1 ГБ)
+        const maxSize = 1024 * 1024 * 1024; // 1 ГБ
         if (file.size > maxSize) {
-            message.error(`Файл слишком большой! Максимальный размер: 500 МБ. Размер вашего файла: ${(file.size / 1024 / 1024).toFixed(1)} МБ`);
+            message.error(`Файл слишком большой! Максимальный размер: 1 ГБ. Размер вашего файла: ${(file.size / 1024 / 1024 / 1024).toFixed(1)} ГБ`);
             return false;
         }
 
-        // Показываем индикатор загрузки для больших файлов
-        if (file.size > 10 * 1024 * 1024) { // Если файл больше 10 МБ
-            message.loading('Читаем файл, это может занять время...', 0);
+        // Определяем нужно ли использовать chunked upload
+        const useChunkedUpload = LargeFileUploader.shouldUseChunkedUpload(file.size);
+        
+        // Автоматически определяем тип файла
+        let detectedType = sourceType;
+        try {
+            const detection = await MemorySafeFileReader.detectFileType(file);
+            if (detection.confidence > 0.7) {
+                detectedType = detection.type as SourceType;
+                console.log(`🔍 Автоматически определен тип файла: ${detectedType} (уверенность: ${detection.confidence})`);
+            }
+        } catch (error) {
+            console.warn('Не удалось определить тип файла:', error);
+        }
+        
+        // Устанавливаем информацию о выбранном файле
+        setUploadedFile({
+            file: file,
+            name: file.name,
+            size: file.size,
+            useChunkedUpload: useChunkedUpload,
+            detectedType: detectedType,
+            isUploading: false,
+            uploadCompleted: false,
+            analysisResult: null
+        });
+
+        // *** НОВАЯ ЛОГИКА: СРАЗУ НАЧИНАЕМ ЗАГРУЗКУ НА СЕРВЕР ***
+        if (useChunkedUpload) {
+            // Для больших файлов сразу начинаем chunked upload
+            message.info(`📤 Начинаем загрузку большого файла (${(file.size / 1024 / 1024).toFixed(1)} МБ) на сервер...`);
+            await startImmediateUpload(file, detectedType);
+        } else {
+            // Для маленьких файлов сразу начинаем streaming upload  
+            message.info(`📤 Загружаем файл (${(file.size / 1024).toFixed(1)} КБ) на сервер...`);
+            await startImmediateUpload(file, detectedType);
         }
 
-        // Создаем временный URL для файла
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            message.destroy(); // Убираем индикатор загрузки
-            setUploadedFile({
-                file: file,
-                name: file.name,
-                content: e.target?.result,
-                size: file.size
+        return false; // Предотвращаем автоматическую загрузку Antd
+    };
+
+    // Новая функция для немедленной загрузки файла на сервер
+    const startImmediateUpload = async (file: any, detectedType: string) => {
+        try {
+            // Обновляем состояние - начинаем загрузку
+            setUploadedFile((prev: any) => prev ? {...prev, isUploading: true} : null);
+            
+            // Показываем прогресс
+            setUploadProgress({
+                visible: true,
+                percentage: 0,
+                currentChunk: 0,
+                totalChunks: 0,
+                status: 'uploading',
+                message: 'Подготовка к загрузке...'
             });
-            // Устанавливаем имя файла как путь для анализа
-            form.setFieldsValue({ 
-                file_path: file.name,
-                uploaded_file_content: e.target?.result
+
+            let result;
+            const useChunkedUpload = LargeFileUploader.shouldUseChunkedUpload(file.size);
+            
+            if (useChunkedUpload) {
+                // Chunked upload для больших файлов
+                result = await LargeFileUploader.uploadLargeFileForAnalysis(
+                    file,
+                    detectedType,
+                    (progress) => {
+                        setUploadProgress((prev: any) => ({
+                            ...prev,
+                            percentage: progress.percentage,
+                            currentChunk: progress.currentChunk,
+                            totalChunks: progress.totalChunks,
+                            message: `Загружено ${(progress.loaded / 1024 / 1024).toFixed(1)} МБ из ${(progress.total / 1024 / 1024).toFixed(1)} МБ`
+                        }));
+                    }
+                );
+            } else {
+                // Streaming upload для маленьких файлов
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('source_type', detectedType);
+                formData.append('sample_size', '1000');
+                
+                const response = await fetch('/api/v1/analyze_file_stream', {
+                    method: 'POST',
+                    body: formData,
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(`Upload failed: ${errorData.error}`);
+                }
+                
+                result = await response.json();
+            }
+
+            // Обрабатываем результат анализа
+            const analysisResult = processAnalysisResult(result);
+            
+            // Обновляем состояние - загрузка завершена
+            setUploadedFile((prev: any) => prev ? {
+                ...prev, 
+                isUploading: false,
+                uploadCompleted: true,
+                analysisResult: analysisResult
+            } : null);
+            
+            // Устанавливаем результат анализа в основное состояние
+            setAnalysisResult(analysisResult);
+            setSourceConfig({
+                source_type: detectedType,
+                connection_params: {
+                    file_name: file.name,
+                    is_uploaded: true,
+                    server_processed: true
+                }
             });
+            
+            // Завершаем прогресс
+            setUploadProgress((prev: any) => ({
+                ...prev,
+                status: 'complete',
+                percentage: 100,
+                message: 'Файл успешно загружен и проанализирован!'
+            }));
+
+            // Скрываем прогресс через 3 секунды
+            setTimeout(() => {
+                setUploadProgress((prev: any) => ({ ...prev, visible: false }));
+            }, 3000);
+
+            message.success(`✅ Файл "${file.name}" успешно загружен и проанализирован!`);
+
+        } catch (error: any) {
+            console.error('Ошибка немедленной загрузки:', error);
+            
+            // Обновляем состояние - ошибка загрузки
+            setUploadedFile((prev: any) => prev ? {
+                ...prev, 
+                isUploading: false,
+                uploadCompleted: false,
+                analysisResult: null
+            } : null);
+            
+            setUploadProgress((prev: any) => ({
+                ...prev,
+                status: 'error',
+                message: error.message || 'Ошибка загрузки файла'
+            }));
+
+            message.error(`❌ Ошибка загрузки файла: ${error.message}`);
+        }
+    };
+
+    // Функция для обработки результата анализа в единый формат
+    const processAnalysisResult = (result: any): AnalysisResult => {
+        const streamingResult = result.analysis_result || result;
+        
+        return {
+            row_count: streamingResult?.total_rows || 0,
+            column_count: streamingResult?.columns?.length || 0,
+            columns: streamingResult?.column_types || {},
+            data_quality: {
+                total_nulls: streamingResult?.null_counts ? 
+                    Object.values(streamingResult.null_counts as Record<string, number>)
+                        .reduce((a: number, b: number) => a + b, 0) : 0,
+                duplicate_rows: 0,
+                completeness_score: streamingResult?.data_quality_score || 100,
+                quality_score: streamingResult?.data_quality_score || 100,
+                null_counts: streamingResult?.null_counts || {},
+                issues: []
+            },
+            recommendations: [{
+                type: 'server_processed',
+                description: `Файл обработан на сервере. Размер: ${result.file_info?.size || 0} bytes`,
+                confidence: 1.0
+            }],
+            llm_recommendations: [`Файл "${result.file_info?.name || 'unknown'}" успешно обработан на сервере.`],
+            error: undefined,
+            raw_response: result,
+            streaming_info: {
+                file_size: result.file_info?.size,
+                processed_size: result.file_info?.processed_size,
+                sample_size: result.file_info?.sample_size,
+                analysis_method: result.file_info?.analysis_method || 'server_processed'
+            }
         };
-        reader.onerror = () => {
-            message.destroy(); // Убираем индикатор загрузки
-            message.error('Ошибка чтения файла');
-        };
-        reader.readAsText(file, 'UTF-8');
-        return false; // Предотвращаем автоматическую загрузку
+    };
+
+    // Функция для отмены загрузки файла
+    const cancelUpload = () => {
+        setUploadedFile((prev: any) => prev ? {
+            ...prev, 
+            isUploading: false,
+            uploadCompleted: false,
+            analysisResult: null
+        } : null);
+        
+        setUploadProgress((prev: any) => ({
+            ...prev,
+            visible: false,
+            status: 'uploading',
+            percentage: 0
+        }));
+        
+        message.info('Загрузка файла отменена');
     };
 
     const renderConnectionParams = () => {
@@ -127,14 +319,71 @@ const Step1Form = () => {
                                 {uploadedFile && (
                                     <div style={{ marginTop: 8 }}>
                                         <Alert
-                                            message={`Файл загружен: ${uploadedFile.name}`}
+                                            message={
+                                                uploadedFile.isUploading ? 
+                                                `📤 Загружается: ${uploadedFile.name}` :
+                                                uploadedFile.uploadCompleted ? 
+                                                `✅ Загружен и проанализирован: ${uploadedFile.name}` :
+                                                `⏳ Выбран: ${uploadedFile.name}`
+                                            }
                                             description={`Размер: ${uploadedFile.size > 1024 * 1024 ? 
                                                 (uploadedFile.size / 1024 / 1024).toFixed(1) + ' МБ' : 
-                                                (uploadedFile.size / 1024).toFixed(1) + ' КБ'} | Тип: ${sourceType.toUpperCase()}`}
-                                            type="success"
+                                                (uploadedFile.size / 1024).toFixed(1) + ' КБ'} | Тип: ${sourceType.toUpperCase()}${uploadedFile.useChunkedUpload ? ' | Chunked загрузка 🚀' : ''}${
+                                                uploadedFile.uploadCompleted ? ' | Готов к анализу!' : 
+                                                uploadedFile.isUploading ? ' | Идет загрузка...' : ' | Ожидает загрузки'
+                                            }`}
+                                            type={
+                                                uploadedFile.uploadCompleted ? "success" :
+                                                uploadedFile.isUploading ? "info" : "warning"
+                                            }
                                             showIcon
                                             closable={false}
+                                            action={
+                                                uploadedFile.isUploading ? (
+                                                    <Button 
+                                                        size="small" 
+                                                        danger 
+                                                        onClick={() => cancelUpload()}
+                                                    >
+                                                        Отменить
+                                                    </Button>
+                                                ) : undefined
+                                            }
                                         />
+                                    </div>
+                                )}
+                                
+                                {/* Прогресс загрузки */}
+                                {uploadProgress.visible && (
+                                    <div style={{ marginTop: 12, padding: '12px', backgroundColor: '#f6ffed', borderRadius: '6px', border: '1px solid #b7eb8f' }}>
+                                        <div style={{ marginBottom: '8px', fontWeight: 'bold', color: '#52c41a' }}>
+                                            {uploadProgress.status === 'uploading' && '📤 Загружаем файл по частям...'}
+                                            {uploadProgress.status === 'processing' && '⚙️ Анализируем данные...'}
+                                            {uploadProgress.status === 'complete' && '✅ Загрузка и анализ завершены!'}
+                                            {uploadProgress.status === 'error' && '❌ Ошибка загрузки'}
+                                        </div>
+                                        
+                                        <Progress 
+                                            percent={uploadProgress.percentage} 
+                                            status={uploadProgress.status === 'error' ? 'exception' : 'active'}
+                                            strokeColor={{
+                                                '0%': '#87d068',
+                                                '100%': '#52c41a',
+                                            }}
+                                            format={(percent) => `${percent}%`}
+                                        />
+                                        
+                                        {uploadProgress.totalChunks > 1 && (
+                                            <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                                                Чанк {uploadProgress.currentChunk} из {uploadProgress.totalChunks}
+                                            </div>
+                                        )}
+                                        
+                                        {uploadProgress.message && (
+                                            <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                                                {uploadProgress.message}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </Form.Item>
@@ -195,6 +444,22 @@ const DataSourceWizard: React.FC = () => {
     const [pipelineConfig, setPipelineConfig] = useState<PipelineConfigData | undefined>(undefined);
     const [sourceConfig, setSourceConfig] = useState<any>(null);
     const [form] = Form.useForm();
+    const [uploadProgress, setUploadProgress] = useState<{
+        visible: boolean;
+        percentage: number;
+        currentChunk: number;
+        totalChunks: number;
+        status: 'uploading' | 'processing' | 'complete' | 'error';
+        message: string;
+    }>({
+        visible: false,
+        percentage: 0,
+        currentChunk: 0,
+        totalChunks: 0,
+        status: 'uploading',
+        message: ''
+    });
+    const [uploadedFile, setUploadedFile] = useState<any>(null);
 
     const analysisMutation = useMutation<MASAnalysisResult, Error, any>({
         mutationFn: analyzeDataSource,
@@ -219,6 +484,8 @@ const DataSourceWizard: React.FC = () => {
         },
     });
 
+    // Старая streamingAnalysisMutation удалена - теперь используем немедленную загрузку при выборе файла
+
     const handleNext = () => {
         if (current === 0) {
             form.submit();
@@ -233,21 +500,51 @@ const DataSourceWizard: React.FC = () => {
         setCurrent(current - 1);
     };
 
-    const onFormFinish = (values: any) => {
-        const { source_type, file_path, table, file_input_type, uploaded_file_content } = values;
+    const onFormFinish = async (values: any) => {
+        const { source_type, file_path, table, file_input_type, uploaded_file } = values;
+
+        // *** НОВАЯ ЛОГИКА: Проверяем если файл уже загружен и проанализирован ***
+        if (file_input_type === 'upload' && uploadedFile && uploadedFile.uploadCompleted && uploadedFile.analysisResult) {
+            console.log('✅ Файл уже загружен и проанализирован, используем готовый результат');
+            
+            // Файл уже на сервере и проанализирован, переходим к следующему шагу
+            setAnalysisResult(uploadedFile.analysisResult);
+            setSourceConfig({
+                source_type,
+                connection_params: {
+                    file_name: uploadedFile.name,
+                    is_uploaded: true,
+                    server_processed: true
+                }
+            });
+            
+            message.success('Переходим к анализу уже загруженного файла');
+            setCurrent(current + 1);
+            return;
+        }
+
+        // Если загрузка еще не завершена, блокируем переход
+        if (file_input_type === 'upload' && uploadedFile && uploadedFile.isUploading) {
+            message.warning('⏳ Дождитесь завершения загрузки файла на сервер');
+            return;
+        }
+
+        // Если выбран файл но он еще не загружен, запускаем загрузку
+        if (file_input_type === 'upload' && uploadedFile && !uploadedFile.uploadCompleted) {
+            message.warning('⏳ Файл выбран но еще не загружен. Попробуйте выбрать файл снова.');
+            return;
+        }
+
         let connection_params = {};
 
         switch (source_type) {
             case SourceType.CSV:
             case SourceType.JSON:
             case SourceType.XML:
-                if (file_input_type === 'upload' && uploaded_file_content) {
-                    // Для загруженного файла передаем содержимое
-                    connection_params = { 
-                        file_content: uploaded_file_content,
-                        file_name: file_path,
-                        is_uploaded: true
-                    };
+                if (file_input_type === 'upload' && uploaded_file) {
+                    // Этот случай не должен произойти, так как мы проверили выше
+                    message.error('Ошибка: файл не был правильно обработан');
+                    return;
                 } else {
                     // Для файла на сервере передаем путь
                     connection_params = { 
@@ -284,7 +581,22 @@ const DataSourceWizard: React.FC = () => {
 
     const canGoToNextStep = () => {
         switch (current) {
-            case 0: return true; // форма валидируется автоматически
+            case 0: {
+                // Для шага выбора источника данных
+                const formValues = form.getFieldsValue();
+                const fileInputType = formValues.file_input_type || 'path';
+                
+                if (fileInputType === 'upload') {
+                    // Если выбрана загрузка файла, проверяем состояние загрузки
+                    if (!uploadedFile) return false;
+                    if (uploadedFile.isUploading) return false; // Загрузка в процессе
+                    if (!uploadedFile.uploadCompleted) return false; // Загрузка не завершена
+                    return true; // Файл успешно загружен
+                } else {
+                    // Для файлов на сервере - форма валидируется автоматически
+                    return true;
+                }
+            }
             case 1: return !!analysisResult; // должны быть результаты анализа
             case 2: return !!selectedStorage; // должно быть выбрано хранилище
             case 3: return !!pipelineConfig; // должна быть конфигурация пайплайна
@@ -296,7 +608,14 @@ const DataSourceWizard: React.FC = () => {
     const steps = [
         {
             title: 'Источник данных',
-            content: <Step1Form />,
+            content: <Step1Form 
+                uploadProgress={uploadProgress} 
+                uploadedFile={uploadedFile}
+                setUploadedFile={setUploadedFile}
+                setUploadProgress={setUploadProgress}
+                setAnalysisResult={setAnalysisResult}
+                setSourceConfig={setSourceConfig}
+            />,
         },
         {
             title: 'Анализ данных',
@@ -367,10 +686,13 @@ const DataSourceWizard: React.FC = () => {
                     <Button 
                         type="primary" 
                         onClick={handleNext} 
-                        loading={analysisMutation.isPending}
+                        loading={
+                            analysisMutation.isPending || 
+                            (current === 0 && uploadedFile && uploadedFile.isUploading)
+                        }
                         disabled={!canGoToNextStep()}
                     >
-                        Далее
+                        {current === 0 && uploadedFile && uploadedFile.isUploading ? 'Загружается файл...' : 'Далее'}
                     </Button>
                 )}
             </div>
