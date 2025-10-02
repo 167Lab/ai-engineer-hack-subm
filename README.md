@@ -13,28 +13,28 @@
 - `infra/airflow/` — окружение Airflow (webserver, scheduler, init), общие include‑модули для DAG.
 - `docker-compose.yml` — сервисы и тома, смонтированы `dags/` и `include/`, задан `PYTHONPATH=/opt/airflow/dags` для импорта `include.*`.
 
-![Архитектура системы](docs/screenshots/arch.png)
+![Архитектура системы](docs/arch.png)
 
 ## Интерфейс
 - Шаг 1 — выбор источника и загрузка файла
   
-  ![Стартовый экран](docs/screenshots/step1.png)
+  ![Стартовый экран](docs/screenshots/screen2.png)
 
 - Шаг 2 — анализ данных
   
-  ![Анализ](docs/screenshots/step2.png)
+  ![Анализ](docs/screenshots/screen3.png)
 
 - Шаг 3 — выбор хранилища
   
-  ![Рекомендации по выбору хранилища](docs/screenshots/step3.png)
+  ![Рекомендации по выбору хранилища](docs/screenshots/screen4.png)
 
 - Шаг 4 — настройка пайплайна
   
-  ![Пайплайн](docs/screenshots/step4.png)
+  ![Пайплайн](docs/screenshots/screen5.png)
 
 - Шаг 5 — предпросмотр и запуск
   
-  ![Заключительный шаг](docs/screenshots/step5.png)
+  ![Заключительный шаг](docs/screenshots/screen6.png)
 
 ## Быстрый старт (Docker Compose)
 
