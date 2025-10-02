@@ -51,7 +51,7 @@ export interface MASAnalysisResult {
         metadata?: {
             row_count: number;
             column_count: number;
-            columns: Record<string, ColumnDetails>;
+            columns: Record<string, ColumnDetails | string>;
         };
         data_quality?: DataQuality;
         recommendations?: any[];
@@ -64,7 +64,7 @@ export interface MASAnalysisResult {
 export interface AnalysisResult {
     row_count?: number;
     column_count?: number;
-    columns?: Record<string, ColumnDetails>;
+    columns?: Record<string, ColumnDetails | string>;
     data_quality?: DataQuality;
     recommendations?: any[];
     llm_recommendations?: any;

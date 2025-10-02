@@ -1,0 +1,14 @@
+# {{ task.ref }} — {{ task.key }}
+def {{ task.ref }}_fn(**context):
+    from include.ops.sink import write_datalake  # (format, data_ref, path, partition_by, storage, mode)
+    data_ref = context["ti"].xcom_pull(task_ids="{{ task.params.get('from') }}")
+    return write_datalake(
+        fmt={{ task.params.format | default("parquet") | tojson }},   # "parquet"|"delta"|"iceberg"
+        data_ref=data_ref,
+        path={{ task.params.path | tojson }},
+        partition_by={{ task.params.get("partition_by", []) | tojson }},
+        storage={{ task.params.get("storage", "hdfs") | tojson }},
+        mode={{ task.params.get("mode", "append") | tojson }}
+    )
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

@@ -6,7 +6,7 @@ from .serializers import (
     DataSourceAnalysisRequestSer, DAGGenerationRequestSer,
     DataSourceAnalysisResponseSer, DAGDeploymentRequestSer
 )
-from apps.agents.integration import MASIntegration
+from apps.agents.integration import LLMIntegration
 from services.airflow import render_dag_py, deploy_dag_to_airflow, get_recs_for_source, delete_dag_properly
 
 # Create your views here.
@@ -20,7 +20,7 @@ class AnalyzeDataSourceView(APIView):
         ser.is_valid(raise_exception=True)
         
         try:
-            mas = MASIntegration()
+            mas = LLMIntegration()
             # Запускаем async функцию в event loop
             result = asyncio.run(mas.analyze_data_source(ser.validated_data))
             return Response(result)

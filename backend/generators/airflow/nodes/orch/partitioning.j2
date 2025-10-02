@@ -1,0 +1,12 @@
+# {{ task.ref }} — Orch.Partitioning
+def {{ task.ref }}_fn(**context):
+    from include.utils.partitions import make_partitions  # (start, end, every, tz, fmt) -> {"partitions":[...]}
+    return make_partitions(
+        start={{ task.params.start | tojson }},      # "2025-01-01"
+        end={{ task.params.end | tojson }},          # "2025-01-31" | "now"
+        every={{ task.params.every | default("1d") | tojson }},  # "1d"|"1h"
+        tz={{ task.params.get("tz","UTC") | tojson }},
+        fmt={{ task.params.get("fmt","YYYY-MM-DD") | tojson }}
+    )
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

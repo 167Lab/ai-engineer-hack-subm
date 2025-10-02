@@ -1,0 +1,12 @@
+# {{ task.ref }} — {{ task.key }}
+def {{ task.ref }}_fn(**context):
+    from include.ops.transform import aggregate  # (data_ref, group_by, metrics, engine) -> {"table": "..."} or {"staging_path": "..."}
+    data_ref = context["ti"].xcom_pull(task_ids="{{ task.params.get('from') }}")
+    return aggregate(
+        data_ref=data_ref,
+        group_by={{ task.params.group_by | default([]) | tojson }},
+        metrics={{ task.params.metrics | tojson }},   # {"metric_name":{"op":"sum","col":"amount"}}
+        engine={{ task.params.get("engine") | tojson }}  # опц.: если считать на БД
+    )
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

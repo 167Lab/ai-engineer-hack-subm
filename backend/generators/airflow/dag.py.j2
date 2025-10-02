@@ -1,0 +1,15 @@
+with DAG(
+    dag_id="{{ ir.name }}",
+    start_date=datetime(2025, 1, 1),
+    schedule="{{ ir.schedule or '@once' }}",
+    catchup=False,
+    max_active_runs=1,
+    tags={{ (ir.tags or ['generated','mvp']) | tojson }}
+) as dag:
+    # сюда компилятор подставляет сгенерированный код задач из шаблонов узлов
+    {{ tasks_code | safe }}
+
+    # зависимости между задачами
+    {% for edge in ir.edges %}
+    {{ edge[0] }} >> {{ edge[1] }}
+    {% endfor %}

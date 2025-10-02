@@ -1,0 +1,10 @@
+# {{ task.ref }} — {{ task.key }}
+def {{ task.ref }}_fn(**context):
+    from include.ops.clean import handle_nulls  # (data_ref, strategy) -> {"staging_path": "..."}
+    data_ref = context["ti"].xcom_pull(task_ids="{{ task.params.get('from') }}")
+    return handle_nulls(
+        data_ref=data_ref,
+        strategy={{ task.params.strategy | default({"mode":"drop","columns":[]}) | tojson }}  # {"mode":"drop|fill","value":..., "columns":[...]}
+    )
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

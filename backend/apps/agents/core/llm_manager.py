@@ -1,11 +1,11 @@
 """
-Менеджер LLM с поддержкой локальных (Ollama) и облачных моделей
+Менеджер LLM с поддержкой только локальных моделей через Ollama (на будущее предусмотрен гибридный режим: Ollama + облачные провайдеры)
 """
 import os
 import logging
 from typing import Optional, Dict, Any, List
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 import yaml
 from pathlib import Path
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class LLMManager:
     """
-    Менеджер для управления LLM с поддержкой гибридного подхода
+    Менеджер для управления локальной LLM (Ollama)
     """
     
     def __init__(self, config_path: Optional[str] = None):
@@ -26,7 +26,8 @@ class LLMManager:
         """
         self.config = self._load_config(config_path)
         self.llm_config = self.config.get('llm_config', {})
-        self.provider = self.llm_config.get('provider', 'ollama')
+        # Всегда используем Ollama
+        self.provider = 'ollama'
         self.models_cache: Dict[str, BaseChatModel] = {}
         
     def _load_config(self, config_path: Optional[str] = None) -> Dict[str, Any]:
@@ -50,12 +51,12 @@ class LLMManager:
                     'enabled': True,
                     'url': 'http://localhost:11434',
                     'models': {
-                        'input_analysis': 'llama3.2:latest',
-                        'ddl_generation': 'llama3.2:latest',
-                        'pipeline_generation': 'llama3.2:latest',
-                        'report_generation': 'llama3.2:latest'
+                        'input_analysis': 'qwen2.5:14b',
+                        'ddl_generation': 'qwen2.5:14b',
+                        'pipeline_generation': 'qwen2.5:14b',
+                        'report_generation': 'qwen2.5:14b'
                     },
-                    'temperature': 0.7,
+                    'temperature': 0.75,
                     'max_tokens': 4096
                 }
             }
@@ -79,20 +80,15 @@ class LLMManager:
         
         llm = None
         
-        if self.provider == 'hybrid':
-            # Гибридный режим: пробуем сначала Ollama, затем облачные
-            llm = self._try_ollama(agent_type) or self._try_cloud(agent_type)
-        elif self.provider == 'ollama':
-            llm = self._try_ollama(agent_type)
-        elif self.provider in ['openai', 'groq', 'anthropic']:
-            llm = self._try_cloud(agent_type)
+        # Всегда используем Ollama
+        llm = self._try_ollama(agent_type)
         
         if not llm:
             logger.error(f"Не удалось инициализировать LLM для агента {agent_type}")
             llm = self._get_fallback_llm(agent_type)
         
         if llm and use_tools:
-            # Здесь можно добавить привязку инструментов
+            # Здесь в будущем можно добавить привязку инструментов
             pass
         
         if llm:
@@ -121,64 +117,14 @@ class LLMManager:
             
             # Проверка доступности модели
             test_response = llm.invoke([HumanMessage(content="test")])
-            logger.info(f"Ollama модель {model_name} успешно инициализирована для {agent_type}")
+            logger.info(f"Модель {model_name} успешно инициализирована для {agent_type}")
             return llm
             
         except Exception as e:
-            logger.warning(f"Не удалось инициализировать Ollama для {agent_type}: {e}")
+            logger.warning(f"Не удалось инициализировать модель для {agent_type}: {e}")
             return None
     
-    def _try_cloud(self, agent_type: str) -> Optional[BaseChatModel]:
-        """Попытка инициализации облачной модели"""
-        cloud_config = self.llm_config.get('cloud', {})
-        
-        if not cloud_config.get('enabled', False):
-            return None
-        
-        provider = cloud_config.get('provider', 'groq')
-        api_key = os.getenv(cloud_config.get('api_key', '').replace('${', '').replace('}', ''))
-        
-        if not api_key:
-            logger.warning(f"API ключ для {provider} не найден")
-            return None
-        
-        try:
-            model_name = cloud_config['models'].get(agent_type, 'llama-3.3-70b-versatile')
-            
-            if provider == 'groq':
-                from langchain_groq import ChatGroq
-                llm = ChatGroq(
-                    model=model_name,
-                    api_key=api_key,
-                    temperature=cloud_config.get('temperature', 0.7),
-                    max_tokens=cloud_config.get('max_tokens', 4096),
-                )
-            elif provider == 'openai':
-                from langchain_openai import ChatOpenAI
-                llm = ChatOpenAI(
-                    model=model_name,
-                    api_key=api_key,
-                    temperature=cloud_config.get('temperature', 0.7),
-                    max_tokens=cloud_config.get('max_tokens', 4096),
-                )
-            elif provider == 'anthropic':
-                from langchain_anthropic import ChatAnthropic
-                llm = ChatAnthropic(
-                    model=model_name,
-                    api_key=api_key,
-                    temperature=cloud_config.get('temperature', 0.7),
-                    max_tokens=cloud_config.get('max_tokens', 4096),
-                )
-            else:
-                logger.error(f"Неподдерживаемый облачный провайдер: {provider}")
-                return None
-            
-            logger.info(f"{provider} модель {model_name} успешно инициализирована для {agent_type}")
-            return llm
-            
-        except Exception as e:
-            logger.warning(f"Не удалось инициализировать {provider} для {agent_type}: {e}")
-            return None
+    # Удалены облачные провайдеры — используется только Ollama
     
     def _get_fallback_llm(self, agent_type: str) -> BaseChatModel:
         """
@@ -223,10 +169,7 @@ class LLMManager:
                 last_error = e
                 logger.warning(f"Попытка {attempt + 1}/{retry_count} не удалась: {e}")
                 
-                # Если это была Ollama и включен гибридный режим, пробуем облачную модель
-                if self.provider == 'hybrid' and attempt < retry_count - 1:
-                    logger.info("Переключаемся на облачную модель...")
-                    # Здесь можно добавить логику переключения
+                # Без гибридного режима дополнительных переключений нет
         
         raise last_error
     
@@ -240,26 +183,10 @@ class LLMManager:
         Returns:
             Информация о модели
         """
-        if self.provider == 'ollama':
-            config = self.llm_config.get('ollama', {})
-            return {
-                'provider': 'ollama',
-                'model': config['models'].get(agent_type, 'llama3.2:latest'),
-                'temperature': config.get('temperature', 0.7),
-                'max_tokens': config.get('max_tokens', 4096)
-            }
-        elif self.provider in ['openai', 'groq', 'anthropic']:
-            config = self.llm_config.get('cloud', {})
-            return {
-                'provider': config.get('provider', 'groq'),
-                'model': config['models'].get(agent_type, 'llama-3.3-70b-versatile'),
-                'temperature': config.get('temperature', 0.7),
-                'max_tokens': config.get('max_tokens', 4096)
-            }
-        else:
-            return {
-                'provider': 'unknown',
-                'model': 'unknown',
-                'temperature': 0.7,
-                'max_tokens': 4096
-            }
+        config = self.llm_config.get('ollama', {})
+        return {
+            'provider': 'ollama',
+            'model': config.get('models', {}).get(agent_type, 'qwen2.5:14b'),
+            'temperature': config.get('temperature', 0.75),
+            'max_tokens': config.get('max_tokens', 4096)
+        }

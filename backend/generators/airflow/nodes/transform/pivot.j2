@@ -1,0 +1,14 @@
+# {{ task.ref }} — {{ task.key }}
+def {{ task.ref }}_fn(**context):
+    from include.ops.transform import pivot  # (data_ref, index, columns, values, aggfunc, fill_value)
+    data_ref = context["ti"].xcom_pull(task_ids="{{ task.params.get('from') }}")
+    return pivot(
+        data_ref=data_ref,
+        index={{ task.params.index | tojson }},
+        columns={{ task.params.columns | tojson }},
+        values={{ task.params.values | tojson }},
+        aggfunc={{ task.params.aggfunc | default("sum") | tojson }},
+        fill_value={{ task.params.get("fill_value") | tojson }}
+    )
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

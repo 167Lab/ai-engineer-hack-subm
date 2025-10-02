@@ -2,43 +2,22 @@ version: 1.0
 
 # Настройки LLM
 llm_config:
-  provider: "hybrid"   # гибридный режим: можно использовать как локальные модели, так и облачные
+  provider: "ollama"
   
   # Настройки Ollama (локальные модели)
   ollama:
     enabled: true
-    url: "http://localhost:11434"
+    url: "http://ollama:11434"
     timeout: 300  # секунд
     models:
-      input_analysis: "qwen2.5:14b"  # Для анализа входных данных
-      ddl_generation: "llama3.2:latest"  # Для генерации DDL
-      pipeline_generation: "qwen2.5:14b"  # Для генерации пайплайнов
-      report_generation: "llama3.2:latest"  # Для генерации отчетов
+      input_analysis: "qwen2.5:14b"   # можно использовать другие доступные, в будущем сделаем перечень поддерживаемых моделей
+      ddl_generation: "qwen2.5:14b"
+      pipeline_generation: "qwen2.5:14b"
+      report_generation: "qwen2.5:14b"
     
     # Параметры генерации
-    temperature: 0.7
+    temperature: 0.75
     max_tokens: 4096
-  
-  # Настройки облачных провайдеров
-  cloud:
-    enabled: false  # на время тестирования
-    provider: "groq"  # openai, anthropic, groq
-    api_key: "${GROQ_API_KEY}"  # Из переменных окружения
-    
-    models:   # здесь будет выбор из доступных моделей
-      input_analysis: "llama-3.3-70b-versatile"
-      ddl_generation: "llama-3.3-70b-versatile"
-      pipeline_generation: "llama-3.3-70b-versatile"  
-      report_generation: "llama-3.3-70b-versatile"
-    
-    temperature: 0.7
-    max_tokens: 4096
-  
-  # Стратегия выбора моделей
-  model_selection:
-    strategy: "auto"  # auto, manual, cost_optimized
-    fallback: true    # Переключение на cloud при недоступности Ollama
-    retry_count: 3    # Количество попыток при ошибках
 
 # Настройки агентов
 agents_config:

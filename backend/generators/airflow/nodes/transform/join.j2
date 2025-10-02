@@ -1,0 +1,14 @@
+# {{ task.ref }} — {{ task.key }}
+def {{ task.ref }}_fn(**context):
+    from include.ops.transform import join_tables  # (left_ref, right_ref, on, how, suffixes) -> {"staging_path": "..."}
+    left_ref = context["ti"].xcom_pull(task_ids="{{ task.params.left | default('') }}")
+    right_ref = context["ti"].xcom_pull(task_ids="{{ task.params.right | default('') }}")
+    return join_tables(
+        left_ref=left_ref,
+        right_ref=right_ref,
+        on={{ task.params.on | tojson }},
+        how={{ task.params.how | default("inner") | tojson }},
+        suffixes={{ task.params.get("suffixes", ["_x","_y"]) | tojson }}
+    )
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

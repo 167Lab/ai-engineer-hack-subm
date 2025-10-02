@@ -1,5 +1,5 @@
 """
-Интеграция мультиагентной системы с Django API
+Интеграция LLM (Ollama) с Django API с последовательными этапами
 """
 import asyncio
 import logging
@@ -11,23 +11,25 @@ from pathlib import Path
 from .core import (
     MASState,
     LLMManager,
-    create_mas_graph,
-    create_interactive_mas_graph
+    AgentExecutor,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class MASIntegration:
+class LLMIntegration:
     """
-    Класс для интеграции МАС с Django REST API
+    Интеграция последовательного пайплайна на одной локальной LLM
     """
     
     def __init__(self):
-        """Инициализация интеграции МАС"""
+        """Инициализация интеграции LLM"""
         self.llm_manager = LLMManager()
-        self.graph = create_mas_graph(self.llm_manager)
-        self.interactive_graph = create_interactive_mas_graph(self.llm_manager)
+        # Поэтапные исполнители без зависимостей от пакета agents/*
+        self.input_analyzer = AgentExecutor(agent_name='input_analysis', llm_manager=self.llm_manager)
+        self.ddl_generator = AgentExecutor(agent_name='ddl_generation', llm_manager=self.llm_manager)
+        self.pipeline_generator = AgentExecutor(agent_name='pipeline_generation', llm_manager=self.llm_manager)
+        self.report_generator = AgentExecutor(agent_name='report_generation', llm_manager=self.llm_manager)
         
     async def analyze_data_source(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -45,8 +47,8 @@ class MASIntegration:
             # Создаем начальное состояние
             initial_state = self._create_initial_state(request_data)
             
-            # Запускаем граф МАС
-            result = await self._run_graph(initial_state)
+            # Запускаем этапы последовательно в одном процессе
+            result = await self._run_sequential(initial_state)
             
             # Форматируем результат для API
             response = self._format_response(result)
@@ -91,8 +93,8 @@ class MASIntegration:
                 state['interactive_mode'] = True
                 state['session_id'] = session_id
             
-            # Запускаем один шаг графа
-            state = await self._run_interactive_step(state)
+            # Выполняем один шаг последовательного пайплайна (в будущем добавим ожидание и комментарии от пользователя)
+            state = self._run_next_stage(state)
             
             # Сохраняем состояние сессии
             self._save_session(session_id, state)
@@ -134,33 +136,29 @@ class MASIntegration:
         
         return state
     
-    async def _run_graph(self, initial_state: MASState) -> MASState:
+    async def _run_sequential(self, initial_state: MASState) -> MASState:
         """
-        Запуск графа МАС
-        
-        Args:
-            initial_state: Начальное состояние
-            
-        Returns:
-            Финальное состояние после выполнения всех агентов
+        Последовательный запуск этапов: анализ -> DDL -> пайплайн -> отчет
         """
-        # Запускаем граф синхронно (LangGraph сам управляет асинхронностью)
-        final_state = self.graph.invoke(initial_state)
-        return final_state
+        state = initial_state
+        state = self.input_analyzer.execute(state)
+        state = self.ddl_generator.execute(state)
+        state = self.pipeline_generator.execute(state)
+        state = self.report_generator.execute(state)
+        return state
     
-    async def _run_interactive_step(self, state: MASState) -> MASState:
-        """
-        Выполнение одного шага интерактивного графа
-        
-        Args:
-            state: Текущее состояние
-            
-        Returns:
-            Обновленное состояние
-        """
-        # Выполняем один шаг
-        updated_state = self.interactive_graph.invoke(state)
-        return updated_state
+    def _run_next_stage(self, state: MASState) -> MASState:
+        """Выполнить следующий этап на основе состояния"""
+        current = state.get('current_agent')
+        if current is None:
+            return self.input_analyzer.execute(state)
+        if current == 'input_analysis':
+            return self.ddl_generator.execute(state)
+        if current == 'ddl_generation':
+            return self.pipeline_generator.execute(state)
+        if current == 'pipeline_generation':
+            return self.report_generator.execute(state)
+        return state
     
     def _format_response(self, state: MASState) -> Dict[str, Any]:
         """

@@ -1,0 +1,12 @@
+# {{ task.ref }} — {{ task.key }}
+def {{ task.ref }}_fn(**context):
+    from include.ops.clean import deduplicate  # (data_ref, keys, ts_col, keep) -> {"staging_path": "...", "removed": N}
+    data_ref = context["ti"].xcom_pull(task_ids="{{ task.params.get('from') }}")
+    return deduplicate(
+        data_ref=data_ref,
+        keys={{ task.params.keys | tojson }},
+        ts_col={{ task.params.get("ts_col") | tojson }},
+        keep={{ task.params.get("keep", "last") | tojson }}   # "last"|"first"
+    )
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)

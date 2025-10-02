@@ -39,10 +39,12 @@ services:
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - _AIRFLOW_UID=50000
       - _AIRFLOW_GID=0
+      - PYTHONPATH=/opt/airflow/dags
     ports:
       - "8080:8080"
     volumes:
       - ./infra/airflow/dags:/opt/airflow/dags
+      - ./infra/airflow/include:/opt/airflow/dags/include
       - ./logs:/opt/airflow/logs
       - ./sample_data:/opt/airflow/data
 
@@ -67,8 +69,10 @@ services:
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - _AIRFLOW_UID=50000
       - _AIRFLOW_GID=0
+      - PYTHONPATH=/opt/airflow/dags
     volumes:
       - ./infra/airflow/dags:/opt/airflow/dags
+      - ./infra/airflow/include:/opt/airflow/dags/include
       - ./logs:/opt/airflow/logs
       - ./sample_data:/opt/airflow/data
 
@@ -86,6 +90,10 @@ services:
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - _AIRFLOW_UID=50000
       - _AIRFLOW_GID=0
+      - PYTHONPATH=/opt/airflow/dags
+    volumes:
+      - ./infra/airflow/dags:/opt/airflow/dags
+      - ./infra/airflow/include:/opt/airflow/dags/include
 
  # HDFS single-node (NameNode + DataNode)
   hadoop-namenode:
@@ -142,6 +150,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - DJANGO_SETTINGS_MODULE=config.settings
+      - DJANGO_SQLITE_PATH=/tmp/db.sqlite3
       # Python оптимизации для работы с памятью
       - PYTHONOPTIMIZE=1
       - PYTHONDONTWRITEBYTECODE=1

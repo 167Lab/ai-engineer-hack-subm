@@ -1,0 +1,10 @@
+# {{ task.ref }} — {{ task.key }}
+def {{ task.ref }}_fn(**context):
+    from include.ops.sql_exec import query_to_staging  # (engine, sql, params) -> {"table": "...", "rows": N}
+    return query_to_staging(
+        engine={{ task.params.engine | tojson }},          # "postgres" | "clickhouse" | ...
+        sql={{ task.params.sql | tojson }},
+        params={{ task.params.get("sql_params", {}) | tojson }}
+    )
+
+{{ task.ref }} = PythonOperator(task_id="{{ task.ref }}", python_callable={{ task.ref }}_fn)
