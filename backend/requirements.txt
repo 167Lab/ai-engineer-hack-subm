@@ -1,11 +1,27 @@
-django
-djangorestframework
-django-cors-headers
-psycopg2-binary
-clickhouse-driver
-hdfs
-jinja2
-ollama
-langgraph
-pandas
-numpy
+django==4.2.0
+djangorestframework==3.14.0
+django-cors-headers==4.0.0
+psycopg2-binary==2.9.6
+clickhouse-driver==0.2.6
+hdfs==2.7.0
+jinja2==3.1.2
+pandas==2.0.2
+numpy==1.24.3
+
+# LLM и агенты
+ollama==0.1.7
+langchain==0.1.0
+langgraph==0.0.20
+langchain-core==0.1.0
+langchain-community==0.0.10
+langchain-ollama==0.0.1
+
+# Опциональные провайдеры LLM (раскомментировать при необходимости)
+# langchain-openai==0.0.5
+# langchain-anthropic==0.0.1
+# langchain-groq==0.0.1
+
+# Дополнительные зависимости
+pyyaml==6.0
+aiofiles==23.0.0
+python-dotenv==1.0.0
