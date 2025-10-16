@@ -121,7 +121,7 @@ class AnalyzeFileStreamView(APIView):
                             # Перекопируем временный файл в общий том
                             import shutil
                             shutil.copy2(tmp_file.name, persisted_path)
-                            logger.info(f"💾 Файл сохранен для деплоя: {persisted_path}")
+                            logger.info(f"Файл сохранен для деплоя: {persisted_path}")
                         except Exception as save_err:
                             logger.warning(f"Не удалось сохранить файл в общий каталог: {save_err}")
                             persisted_path = None
@@ -170,10 +170,43 @@ class AnalyzeFileStreamView(APIView):
 # /api/v1/generate_dag
 class GenerateDAGView(APIView):
     def post(self, request):
-        ser = DAGGenerationRequestSer(data=request.data)
-        ser.is_valid(raise_exception=True)
-        dag_py, dag_id = render_dag_py(ser.validated_data)
-        return Response({"dag_id": dag_id, "dag_py": dag_py})
+        try:
+            ser = DAGGenerationRequestSer(data=request.data)
+            ser.is_valid(raise_exception=True)
+            dag_py, dag_id = render_dag_py(ser.validated_data)
+            return Response({"dag_id": dag_id, "dag_py": dag_py})
+        except Exception as e:
+            return Response({
+                'status': 'failed',
+                'error': str(e)
+            }, status=400)
+
+    def get(self, request):
+        # Упрощенный GET для тестирования из браузера
+        try:
+            data = {
+                'dag_name': request.query_params.get('dag_name'),
+                'source_config': {
+                    'type': request.query_params.get('source_type', 'csv'),
+                    'path': request.query_params.get('source_path', '/opt/airflow/data/sample.csv'),
+                },
+                'target_config': {
+                    'type': request.query_params.get('target_type', 'postgres'),
+                    'table': request.query_params.get('target_table', 'processed_data'),
+                },
+                'schedule': request.query_params.get('schedule', '@once'),
+                'owner': request.query_params.get('owner', 'etl-system'),
+                'description': request.query_params.get('description')
+            }
+            ser = DAGGenerationRequestSer(data=data)
+            ser.is_valid(raise_exception=True)
+            dag_py, dag_id = render_dag_py(ser.validated_data)
+            return Response({"dag_id": dag_id, "dag_py": dag_py})
+        except Exception as e:
+            return Response({
+                'status': 'failed',
+                'error': str(e)
+            }, status=400)
 
 # /api/v1/recommendations?source_id=...
 class GetRecommendationsView(APIView):
@@ -188,6 +221,34 @@ class GetRecommendationsView(APIView):
 class DeployDAGView(APIView):
     def post(self, request):
         ser = DAGDeploymentRequestSer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        deploy_info = deploy_dag_to_airflow(ser.validated_data)
+        return Response(deploy_info)
+
+    def get(self, request):
+        # Поддержка GET для удобства тестирования из браузера/линков
+        data = {
+            'dag_name': request.query_params.get('dag_name'),
+            'source_config': {
+                'type': request.query_params.get('source_type'),
+                'path': request.query_params.get('source_path'),
+            },
+            'target_config': {
+                'type': request.query_params.get('target_type'),
+                'table': request.query_params.get('target_table'),
+            },
+            'schedule': request.query_params.get('schedule'),
+            'owner': request.query_params.get('owner'),
+            'description': request.query_params.get('description'),
+            'retries': request.query_params.get('retries'),
+            'retry_delay': request.query_params.get('retry_delay'),
+        }
+        # Очистка пустых значений
+        data['source_config'] = {k: v for k, v in data['source_config'].items() if v}
+        data['target_config'] = {k: v for k, v in data['target_config'].items() if v}
+        data = {k: v for k, v in data.items() if v is not None}
+
+        ser = DAGDeploymentRequestSer(data=data)
         ser.is_valid(raise_exception=True)
         deploy_info = deploy_dag_to_airflow(ser.validated_data)
         return Response(deploy_info)
@@ -571,7 +632,7 @@ class FinalizeChunkedUploadView(APIView):
                     try:
                         import shutil
                         shutil.copy2(combined_path, persisted_path)
-                        logger.info(f"💾 Файл сохранен для деплоя: {persisted_path}")
+                        logger.info(f"Файл сохранен для деплоя: {persisted_path}")
                     except Exception as save_err:
                         logger.warning(f"Не удалось сохранить файл в общий каталог: {save_err}")
                         persisted_path = None

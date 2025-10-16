@@ -241,7 +241,7 @@ def extract_data():
         # Сохранение во временное расположение
         temp_path = '/opt/airflow/data/temp/{dag_id}_extracted.parquet'
         df.to_parquet(temp_path, index=False)
-        logger.info("💾 Данные сохранены во временный файл: %s" % temp_path)
+        logger.info("Данные сохранены во временный файл: %s" % temp_path)
         
         return temp_path
         
@@ -253,7 +253,7 @@ def extract_data():
     @classmethod
     def get_enhanced_transform_code(cls, dag_id: str) -> str:
         """Улучшенный код трансформации с дополнительной обработкой"""
-        return """
+        return f"""
 def transform_data():
     '''Расширенная трансформация данных'''
     import pandas as pd
@@ -267,11 +267,11 @@ def transform_data():
         temp_path = '/opt/airflow/data/temp/{dag_id}_extracted.parquet'
         
         if not os.path.exists(temp_path):
-            raise FileNotFoundError(f"Файл с извлеченными данными не найден: {temp_path}")
+            raise FileNotFoundError("Файл с извлеченными данными не найден: " + temp_path)
             
         df = pd.read_parquet(temp_path)
         initial_rows = len(df)
-        logger.info(f"Загружено {initial_rows} строк для трансформации")
+        logger.info("Загружено %d строк для трансформации" % initial_rows)
         
         # Детальная трансформация данных
         transformation_steps = []
@@ -279,7 +279,7 @@ def transform_data():
         # 1. Обработка пустых значений
         null_counts = df.isnull().sum()
         if null_counts.sum() > 0:
-            logger.info(f"Найдено пустых значений: {null_counts.sum()}")
+            logger.info("Найдено пустых значений: %d" % null_counts.sum())
             
             # Стратегии обработки пустых значений по типам колонок
             for col in df.columns:
@@ -288,14 +288,38 @@ def transform_data():
                 else:
                     df[col].fillna('Unknown', inplace=True)
             
-            transformation_steps.append(f"Заполнены пустые значения")
+            transformation_steps.append("Заполнены пустые значения")
         
-        # 2. Удаление дубликатов
-        duplicates = df.duplicated().sum()
-        if duplicates > 0:
-            df = df.drop_duplicates()
-            transformation_steps.append(f"Удалено {duplicates} дубликатов")
-            logger.info(f"Удалено {duplicates} дубликатов")
+        # 2. Удаление дубликатов (устойчиво к не-хэшируемым значениям)
+        try:
+            import numpy as np
+            import json
+            from pandas.util import hash_pandas_object
+
+            def normalize_value(v):
+                if isinstance(v, np.ndarray):
+                    return v.tolist()
+                if isinstance(v, (list, dict)):
+                    return json.dumps(v, ensure_ascii=False, sort_keys=True)
+                return v
+
+            normalized = df.applymap(normalize_value)
+            row_hash = hash_pandas_object(normalized, index=False)
+            duplicates = row_hash.duplicated().sum()
+            if duplicates > 0:
+                df = df.loc[~row_hash.duplicated()].copy()
+                transformation_steps.append("Удалено %d дубликатов" % duplicates)
+                logger.info("Удалено %d дубликатов" % duplicates)
+        except Exception as dup_err:
+            logger.warning(f"Не удалось выполнить устойчивое удаление дубликатов: {{dup_err}}")
+            try:
+                duplicates = df.astype(str).duplicated().sum()
+                if duplicates > 0:
+                    df = df.astype(str).drop_duplicates().copy()
+                    transformation_steps.append("Удалено %d дубликатов (по строковому представлению)" % duplicates)
+                    logger.info("Удалено %d дубликатов (по строковому представлению)" % duplicates)
+            except Exception as fallback_err:
+                logger.warning(f"Резервное удаление дубликатов также не удалось: {{fallback_err}}")
         
         # 3. Стандартизация данных
         # Приведение строковых колонок к нижнему регистру где это имеет смысл
@@ -303,25 +327,25 @@ def transform_data():
         for col in string_columns:
             if col.lower() in ['email', 'city', 'department']:
                 df[col] = df[col].astype(str).str.strip().str.title()
-                transformation_steps.append(f"Стандартизирована колонка {col}")
+                transformation_steps.append("Стандартизирована колонка %s" % col)
         
         # 4. Добавление метаданных
         df['processed_at'] = pd.Timestamp.now()
-        df['processing_batch_id'] = '{{dag_id}}'
+        df['processing_batch_id'] = '{dag_id}'
         transformation_steps.append("Добавлены метаданные обработки")
         
         final_rows = len(df)
-        logger.info(f"Трансформация завершена: {initial_rows} → {final_rows} строк")
+        logger.info("Трансформация завершена: %d → %d строк" % (initial_rows, final_rows))
         
         if transformation_steps:
             logger.info("Выполненные трансформации:")
             for step in transformation_steps:
-                logger.info(f"   - {step}")
+                logger.info("   - %s" % step)
         
         # Сохранение трансформированных данных
         transformed_path = '/opt/airflow/data/temp/{dag_id}_transformed.parquet'
         df.to_parquet(transformed_path, index=False)
-        logger.info(f"💾 Трансформированные данные сохранены: {transformed_path}")
+        logger.info("Трансформированные данные сохранены: %s" % transformed_path)
         
         return transformed_path
         

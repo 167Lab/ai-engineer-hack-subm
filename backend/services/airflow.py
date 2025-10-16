@@ -37,7 +37,7 @@ class AirflowService:
             # Получение параметров из конфигурации
             source_type = config.get('source_config', {}).get('type', 'csv')
             target_type = config.get('target_config', {}).get('type', 'postgres')
-            source_path = config.get('source_config', {}).get('path', '/opt/airflow/data/sample.csv')
+            source_path = config.get('source_config', {}).get('path')
             target_table = config.get('target_config', {}).get('table', 'processed_data')
             schedule = config.get('schedule', '@daily')
             owner = config.get('owner', 'etl-system')
@@ -45,6 +45,10 @@ class AirflowService:
             retries = config.get('retries', 1)
             retry_delay = config.get('retry_delay', 5)
             
+            # Валидация обязательных параметров для файловых источников
+            if source_type in ('csv', 'json', 'xml', 'parquet') and not source_path:
+                raise ValueError("source_config.path обязателен для файловых источников (csv/json/xml/parquet)")
+
             # Импорт операций БД для генерации специфичного кода
             from generators.db_operations import DatabaseOperations
             

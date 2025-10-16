@@ -5,7 +5,7 @@ def {{ task.ref }}_fn(**context):
         path={{ task.params.path | tojson }},
         storage={{ task.params.storage | default("local") | tojson }},
         fmt={{ task.params.format | default("auto") | tojson }},
-        infer={{ task.params.infer_schema | default(true) | tojson }},
+        infer={{ task.params.infer_schema | default(true) }},
         sample_rows={{ task.params.sample_rows | default(10000) }}
     )
     return out  # {"staging_path": "...", "rows": N, "schema": {...}}

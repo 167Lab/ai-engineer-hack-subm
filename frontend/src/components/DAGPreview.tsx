@@ -55,11 +55,12 @@ const DAGPreview: React.FC<DAGPreviewProps> = ({
     });
 
     const handleGenerateDAG = () => {
+        const persistedPath = analysisResult?.raw_response?.file_info?.persisted_path || sourceConfig.connection_params.file_path;
         const dagConfig = {
             dag_name: pipelineConfig.pipeline_name,
             source_config: {
                 type: sourceConfig.source_type,
-                path: sourceConfig.connection_params.file_path || `/opt/airflow/data/${sourceConfig.source_type}_data.${sourceConfig.source_type}`
+                path: persistedPath || `/opt/airflow/data/${sourceConfig.source_type}_data.${sourceConfig.source_type}`
             },
             target_config: {
                 type: selectedStorage,
@@ -79,9 +80,23 @@ const DAGPreview: React.FC<DAGPreviewProps> = ({
             return;
         }
 
-        deployMutation.mutate({
-            dag_name: generatedDAG.dag_id
-        });
+        const persistedPath = analysisResult?.raw_response?.file_info?.persisted_path || sourceConfig.connection_params.file_path;
+        const deployConfig = {
+            dag_name: generatedDAG.dag_id,
+            source_config: {
+                type: sourceConfig.source_type,
+                path: persistedPath || `/opt/airflow/data/${sourceConfig.source_type}_data.${sourceConfig.source_type}`
+            },
+            target_config: {
+                type: selectedStorage,
+                table: pipelineConfig.target_table
+            },
+            schedule: pipelineConfig.schedule,
+            description: pipelineConfig.description,
+            owner: 'etl-system'
+        };
+
+        deployMutation.mutate(deployConfig);
     };
 
     const renderConfigurationSummary = () => (

@@ -150,12 +150,14 @@ const Step1Form = ({
             
             // Устанавливаем результат анализа в основное состояние
             setAnalysisResult(analysisResult);
+            const persistedPath = (result as any)?.file_info?.persisted_path as string | undefined;
             setSourceConfig({
                 source_type: detectedType,
                 connection_params: {
                     file_name: file.name,
                     is_uploaded: true,
-                    server_processed: true
+                    server_processed: true,
+                    file_path: persistedPath
                 }
             });
             

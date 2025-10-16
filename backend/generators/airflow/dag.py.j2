@@ -14,11 +14,13 @@ with DAG(
     schedule="{{ ir.schedule or '@once' }}",
     catchup=False,
     max_active_runs=1,
-    tags={{ (ir.tags or ['generated','mvp']) | tojson }},
+    tags={{ ir.tags or ['generated','mvp'] }},
     default_args={{ ir.default_args_py | safe }}
 ) as dag:
     # сюда компилятор подставляет сгенерированный код задач из шаблонов узлов
-    {{ tasks_code | safe }}
+    {% filter indent(width=4) %}
+{{ tasks_code | safe }}
+    {% endfilter %}
 
     # зависимости между задачами
     {% for edge in ir.edges %}

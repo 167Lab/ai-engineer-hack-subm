@@ -31,7 +31,7 @@ class DAGGenerationRequestSer(serializers.Serializer):
 
 class DAGDeploymentRequestSer(serializers.Serializer):
     dag_name = serializers.CharField()
-    source_config = serializers.DictField()
+    source_config = serializers.DictField(required=False, default=dict)
     target_config = serializers.DictField(required=False, default=dict)
     schedule = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     owner = serializers.CharField(required=False, allow_null=True, allow_blank=True)
