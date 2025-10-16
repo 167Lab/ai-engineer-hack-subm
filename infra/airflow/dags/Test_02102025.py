@@ -61,7 +61,7 @@ def extract_data():
         # Сохранение во временное расположение
         temp_path = '/opt/airflow/data/temp/{dag_id}_extracted.parquet'
         df.to_parquet(temp_path, index=False)
-        logger.info("💾 Данные сохранены во временный файл: %s" % temp_path)
+        logger.info("Данные сохранены во временный файл: %s" % temp_path)
         
         return temp_path
         
@@ -138,7 +138,7 @@ def transform_data():
         # Сохранение трансформированных данных
         transformed_path = '/opt/airflow/data/temp/{{dag_id}}_transformed.parquet'
         df.to_parquet(transformed_path, index=False)
-        logger.info(f"💾 Трансформированные данные сохранены: {transformed_path}")
+        logger.info(f"Трансформированные данные сохранены: {transformed_path}")
         
         return transformed_path
         
