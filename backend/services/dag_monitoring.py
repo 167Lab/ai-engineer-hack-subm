@@ -106,7 +106,7 @@ class DAGMonitoringService:
         self.metrics_storage.append(metric)
         
         # Логируем завершение
-        status_emoji = "✅" if status == "success" else "❌" if status == "error" else "⚠️"
+        status_emoji = "OK" if status == "success" else "ERROR" if status == "error" else "WARN"
         
         log_message = (
             f"{status_emoji} COMPLETE [{operation_type}] "
@@ -230,7 +230,7 @@ class DAGMonitoringService:
         
         cleaned_count = old_count - new_count
         if cleaned_count > 0:
-            self.logger.info(f"🧹 Очищено {cleaned_count} старых метрик (старше {days} дней)")
+            self.logger.info(f"Очищено {cleaned_count} старых метрик (старше {days} дней)")
 
 
 # Глобальный экземпляр сервиса
