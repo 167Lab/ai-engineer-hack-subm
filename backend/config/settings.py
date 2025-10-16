@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 
 from pathlib import Path
 import os
+import tempfile
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -34,7 +35,7 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 104857600   # 100 MB (лимит в память)
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10240
 
 # Настройки временных файлов
-FILE_UPLOAD_TEMP_DIR = '/tmp'  # Временная директория для больших файлов
+FILE_UPLOAD_TEMP_DIR = os.getenv('FILE_UPLOAD_TEMP_DIR', tempfile.gettempdir())  # Кроссплатформенная временная директория
 FILE_UPLOAD_HANDLERS = [
     'django.core.files.uploadhandler.TemporaryFileUploadHandler',  # Для больших файлов
     'django.core.files.uploadhandler.MemoryFileUploadHandler',     # Для маленьких файлов
