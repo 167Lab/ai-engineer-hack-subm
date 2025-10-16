@@ -33,7 +33,7 @@ class DAGManager:
                 files_deleted = 0
                 
                 # Шаг 1: Удаление из БД через Airflow CLI
-                logger.info(f"🗑️ Удаление DAG {dag_id} из базы данных...")
+                logger.info(f"Удаление DAG {dag_id} из базы данных...")
                 result = subprocess.run(
                     ['/home/airflow/.local/bin/airflow', 'dags', 'delete', dag_id, '-y'],
                     capture_output=True,
@@ -42,11 +42,11 @@ class DAGManager:
                 )
                 
                 if result.returncode != 0:
-                    logger.error(f"❌ Ошибка удаления из БД: {result.stderr}")
+                    logger.error(f"Ошибка удаления из БД: {result.stderr}")
                     monitor_ctx.set_error(f"CLI delete failed: {result.stderr}")
                     return False
                     
-                logger.info(f"✅ DAG {dag_id} удален из базы данных")
+                logger.info(f"DAG {dag_id} удален из базы данных")
                 
                 # Шаг 2: Поиск и удаление физического файла
                 dag_file_path = os.path.join(self.dags_folder, f"{dag_id}.py")
@@ -54,9 +54,9 @@ class DAGManager:
                 if os.path.exists(dag_file_path):
                     os.remove(dag_file_path)
                     files_deleted += 1
-                    logger.info(f"✅ Физический файл {dag_file_path} удален")
+                    logger.info(f"Физический файл {dag_file_path} удален")
                 else:
-                    logger.warning(f"⚠️ Файл {dag_file_path} не найден")
+                    logger.warning(f"Файл {dag_file_path} не найден")
                 
                 # Шаг 3: Очистка __pycache__ 
                 cache_files_deleted = 0
@@ -67,7 +67,7 @@ class DAGManager:
                             pycache_file = os.path.join(pycache_folder, file)
                             os.remove(pycache_file)
                             cache_files_deleted += 1
-                            logger.info(f"🧹 Очищен кэш: {file}")
+                            logger.info(f"Очищен кэш: {file}")
                 
                 total_files = files_deleted + cache_files_deleted
                 
@@ -86,7 +86,7 @@ class DAGManager:
                 return True
                 
             except Exception as e:
-                logger.error(f"❌ Ошибка при удалении DAG {dag_id}: {e}")
+                logger.error(f"Ошибка при удалении DAG {dag_id}: {e}")
                 monitor_ctx.set_error(str(e))
                 return False
     
@@ -128,7 +128,7 @@ class DAGManager:
             orphaned = [f for f in dag_files if f not in registered_dags]
             
             if orphaned:
-                logger.info(f"🔍 Найдены осиротевшие файлы: {orphaned}")
+                logger.info(f"Найдены осиротевшие файлы: {orphaned}")
             
             return orphaned
             
@@ -150,10 +150,10 @@ class DAGManager:
             file_path = os.path.join(self.dags_folder, f"{file_id}.py")
             try:
                 os.remove(file_path)
-                logger.info(f"🗑️ Удален осиротевший файл: {file_path}")
+                logger.info(f"Удален осиротевший файл: {file_path}")
                 deleted_count += 1
             except Exception as e:
-                logger.error(f"❌ Ошибка удаления {file_path}: {e}")
+                logger.error(f"Ошибка удаления {file_path}: {e}")
         
         return deleted_count
 
@@ -185,8 +185,8 @@ if __name__ == "__main__":
     success = delete_dag_with_cleanup(dag_id)
     
     if success:
-        print(f"✅ DAG '{dag_id}' успешно удален")
+        print(f"DAG '{dag_id}' успешно удален")
         sys.exit(0)
     else:
-        print(f"❌ Ошибка при удалении DAG '{dag_id}'")
+        print(f"Ошибка при удалении DAG '{dag_id}'")
         sys.exit(1)

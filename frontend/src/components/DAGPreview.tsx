@@ -179,8 +179,8 @@ const DAGPreview: React.FC<DAGPreviewProps> = ({
                 <div>
                     <Text strong>Статус Airflow API:</Text> 
                     <br />
-                    <Text type={deployResult.airflow_api_status?.includes('✅') ? 'success' : 'warning'}>
-                        {deployResult.airflow_api_status || '❌ Статус неизвестен'}
+                    <Text type={/доступен|работает/i.test(deployResult.airflow_api_status || '') ? 'success' : 'warning'}>
+                        {deployResult.airflow_api_status || 'Статус неизвестен'}
                     </Text>
                 </div>
                 </Space>
@@ -248,7 +248,7 @@ const DAGPreview: React.FC<DAGPreviewProps> = ({
                             </Space>
                         </Card>
                         
-                        {deployResult.airflow_api_status?.includes('❌') && (
+                        {/недоступен|ошибка/i.test(deployResult.airflow_api_status || '') && (
                             <Alert
                                 message="Обратите внимание"
                                 description="API Airflow недоступно, но DAG файл создан. Убедитесь, что Airflow запущен и обновите список DAG в интерфейсе."

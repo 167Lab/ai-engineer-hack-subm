@@ -1,10 +1,21 @@
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+import pandas as pd
+import logging
+import os
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 with DAG(
     dag_id="{{ ir.name }}",
-    start_date=datetime(2025, 1, 1),
+    start_date={{ ir.start_date or "datetime(2025, 1, 1)" }},
     schedule="{{ ir.schedule or '@once' }}",
     catchup=False,
     max_active_runs=1,
-    tags={{ (ir.tags or ['generated','mvp']) | tojson }}
+    tags={{ (ir.tags or ['generated','mvp']) | tojson }},
+    default_args={{ ir.default_args_py | safe }}
 ) as dag:
     # сюда компилятор подставляет сгенерированный код задач из шаблонов узлов
     {{ tasks_code | safe }}

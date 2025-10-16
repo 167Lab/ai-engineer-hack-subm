@@ -34,14 +34,16 @@ class AirflowService:
         try:
             dag_id = config["dag_name"]
             
-            # Базовый шаблон DAG
-            dag_template = self._get_dag_template()
-            
             # Получение параметров из конфигурации
             source_type = config.get('source_config', {}).get('type', 'csv')
             target_type = config.get('target_config', {}).get('type', 'postgres')
             source_path = config.get('source_config', {}).get('path', '/opt/airflow/data/sample.csv')
             target_table = config.get('target_config', {}).get('table', 'processed_data')
+            schedule = config.get('schedule', '@daily')
+            owner = config.get('owner', 'etl-system')
+            description = config.get('description', f'Auto-generated ETL pipeline: {dag_id}')
+            retries = config.get('retries', 1)
+            retry_delay = config.get('retry_delay', 5)
             
             # Импорт операций БД для генерации специфичного кода
             from generators.db_operations import DatabaseOperations
@@ -60,30 +62,64 @@ class AirflowService:
         output_path = '/opt/airflow/data/output/{dag_id}_{target_table}.parquet'
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         df.to_parquet(output_path, index=False)
-        logger.info(f"📁 Данные сохранены в файл: {{output_path}}")
+        logger.info(f"Данные сохранены в файл: {{output_path}}")
 """
             
-            # Подстановка параметров в шаблон
-            transformed_path = f'/opt/airflow/data/temp/{dag_id}_transformed.parquet'
-            dag_content = dag_template.format(
-                dag_id=dag_id,
-                source_type=source_type,
-                target_type=target_type,
-                source_path=source_path,
-                target_table=target_table,
-                transformed_path=transformed_path,
-                schedule=config.get('schedule', '@daily'),
-                owner=config.get('owner', 'etl-system'),
-                description=config.get('description', f'Auto-generated ETL pipeline: {dag_id}'),
-                start_date='2025, 9, 27',
-                retries=config.get('retries', 1),
-                retry_delay=config.get('retry_delay', 5),
-                # Новые параметры для улучшенного шаблона
-                extract_function=DatabaseOperations.get_enhanced_extract_code(source_type, source_path),
-                transform_function=DatabaseOperations.get_enhanced_transform_code(),
-                loader_function=loader_function
+            # Генерация кода функций с подстановкой dag_id (вариант A)
+            extract_function = DatabaseOperations.get_enhanced_extract_code(source_type, source_path, dag_id)
+            transform_function = DatabaseOperations.get_enhanced_transform_code(dag_id)
+
+            # Сборка tasks_code: функции + PythonOperator-задачи
+            tasks_code_parts = [
+                extract_function,
+                transform_function,
+                "def load_data():\n"
+                "    import pandas as pd\n"
+                "    import os\n"
+                f"    transformed_path = '/opt/airflow/data/temp/{dag_id}_transformed.parquet'\n"
+                "    if not os.path.exists(transformed_path):\n"
+                "        raise FileNotFoundError(f'Файл с трансформированными данными не найден: {transformed_path}')\n"
+                "    df = pd.read_parquet(transformed_path)\n"
+                f"{loader_function}\n",
+                # Операторы
+                "extract_task = PythonOperator(task_id='extract_data', python_callable=extract_data)\n",
+                "transform_task = PythonOperator(task_id='transform_data', python_callable=transform_data)\n",
+                "load_data_task = PythonOperator(task_id='load_data', python_callable=load_data)\n",
+            ]
+            tasks_code = "\n".join(tasks_code_parts)
+
+            # Рёбра зависимостей
+            edges = [("extract_task", "transform_task"), ("transform_task", "load_data_task")]
+
+            # Подготовка окружения Jinja и рендер файла DAG
+            templates_dir = Path(__file__).resolve().parent.parent / 'generators' / 'airflow'
+            jinja_env = Environment(loader=FileSystemLoader(str(templates_dir)), autoescape=False, trim_blocks=True, lstrip_blocks=True)
+            template = jinja_env.get_template('dag.py.j2')
+
+            # Строка default_args в Python-формате
+            default_args_py = (
+                "{\n"
+                f"    'owner': '{owner}',\n"
+                "    'depends_on_past': False,\n"
+                "    'email_on_failure': False,\n"
+                "    'email_on_retry': False,\n"
+                f"    'retries': {int(retries)},\n"
+                f"    'retry_delay': timedelta(minutes={int(retry_delay)})\n"
+                "}"
             )
-            
+
+            dag_content = template.render(
+                ir={
+                    'name': dag_id,
+                    'schedule': schedule,
+                    'start_date': 'datetime(2025, 9, 27)',
+                    'tags': ['generated', 'etl', source_type, target_type],
+                    'default_args_py': default_args_py,
+                    'edges': edges,
+                },
+                tasks_code=tasks_code,
+            )
+
             return dag_content, dag_id
             
         except Exception as e:
@@ -229,15 +265,15 @@ class AirflowService:
             if response.status_code == 200:
                 health_data = response.json()
                 if health_data.get('metadatabase', {}).get('status') == 'healthy':
-                    return '✅ API доступен, база данных работает'
+                    return 'API доступен, база данных работает'
                 else:
-                    return '⚠️ API доступен, но есть проблемы с базой данных'
+                    return 'API доступен, но есть проблемы с базой данных'
             else:
-                return f'⚠️ API отвечает с кодом {response.status_code}'
+                return f'API отвечает с кодом {response.status_code}'
                 
         except Exception as e:
             logger.warning(f"Airflow API недоступен: {e}")
-            return f'❌ API недоступен: {str(e)}'
+            return f'API недоступен: {str(e)}'
 
 
 # Экспорт функций для обратной совместимости с существующим кодом

@@ -66,6 +66,7 @@ class AnalyzeFileStreamView(APIView):
             # Получаем параметры
             source_type = request.data.get('source_type', 'csv').lower()
             sample_size = int(request.data.get('sample_size', 1000))
+            persist = request.data.get('persist', 'true').lower() == 'true'
             
             # Валидация размера файла
             max_size = 1024 * 1024 * 1024  # 1 GB
@@ -80,7 +81,7 @@ class AnalyzeFileStreamView(APIView):
                     'status': 'failed'
                 }, status=413)
             
-            logger.info(f"📁 Streaming анализ файла: {uploaded_file.name} ({uploaded_file.size} bytes)")
+            logger.info(f"Streaming анализ файла: {uploaded_file.name} ({uploaded_file.size} bytes)")
             
             # Создаем временный файл для streaming обработки
             with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{source_type}') as tmp_file:
@@ -93,7 +94,7 @@ class AnalyzeFileStreamView(APIView):
                     total_written += len(chunk)
                 
                 tmp_file.flush()
-                logger.info(f"📝 Записано во временный файл: {total_written} bytes")
+                logger.info(f"Записано во временный файл: {total_written} bytes")
                 
                 try:
                     # Используем гибридный анализатор (Stack Overflow + наши улучшения)
@@ -107,7 +108,23 @@ class AnalyzeFileStreamView(APIView):
                         original_filename=uploaded_file.name
                     )
                     
-                    logger.info(f"✅ Streaming анализ завершен для файла {uploaded_file.name}")
+                    logger.info(f"Streaming анализ завершен для файла {uploaded_file.name}")
+                    
+                    persisted_path = None
+                    if persist:
+                        # Сохраняем копию в общий каталог для Airflow
+                        safe_name = os.path.basename(uploaded_file.name)
+                        uploads_dir = '/opt/airflow/data/uploads'
+                        os.makedirs(uploads_dir, exist_ok=True)
+                        persisted_path = os.path.join(uploads_dir, safe_name)
+                        try:
+                            # Перекопируем временный файл в общий том
+                            import shutil
+                            shutil.copy2(tmp_file.name, persisted_path)
+                            logger.info(f"💾 Файл сохранен для деплоя: {persisted_path}")
+                        except Exception as save_err:
+                            logger.warning(f"Не удалось сохранить файл в общий каталог: {save_err}")
+                            persisted_path = None
                     
                     return Response({
                         'status': 'success',
@@ -117,7 +134,8 @@ class AnalyzeFileStreamView(APIView):
                             'size': uploaded_file.size,
                             'processed_size': total_written,
                             'source_type': source_type,
-                            'sample_size': sample_size
+                            'sample_size': sample_size,
+                            'persisted_path': persisted_path
                         }
                     })
                     
@@ -137,12 +155,12 @@ class AnalyzeFileStreamView(APIView):
                     # Очищаем временный файл
                     try:
                         os.unlink(tmp_file.name)
-                        logger.info(f"🧹 Удален временный файл: {tmp_file.name}")
+                        logger.info(f"Удален временный файл: {tmp_file.name}")
                     except Exception as cleanup_error:
-                        logger.warning(f"⚠️ Не удалось удалить временный файл: {cleanup_error}")
+                        logger.warning(f"Не удалось удалить временный файл: {cleanup_error}")
         
         except Exception as e:
-            logger.exception(f"💥 Критическая ошибка streaming upload: {e}")
+            logger.exception(f"Критическая ошибка streaming upload: {e}")
             
             return Response({
                 'error': f'Системная ошибка обработки файла: {str(e)}',
@@ -193,7 +211,7 @@ class DeleteDAGCompleteView(APIView):
         import logging
         
         logger = logging.getLogger(__name__)
-        logger.info(f"🗑️ Запрос на полное удаление DAG: {dag_id}")
+        logger.info(f"Запрос на полное удаление DAG: {dag_id}")
         
         # Валидация dag_id
         if not dag_id or not isinstance(dag_id, str):
@@ -218,17 +236,17 @@ class DeleteDAGCompleteView(APIView):
             
             # Логируем результат
             if result["status"] == "success":
-                logger.info(f"✅ DAG '{dag_id}' успешно удален полностью")
+                logger.info(f"DAG '{dag_id}' успешно удален полностью")
                 status_code = 200
             else:
-                logger.error(f"❌ Ошибка удаления DAG '{dag_id}': {result.get('message')}")
+                logger.error(f"Ошибка удаления DAG '{dag_id}': {result.get('message')}")
                 status_code = 500
                 
             return Response(result, status=status_code)
             
         except Exception as e:
             # Критическая ошибка - логируем подробно
-            logger.exception(f"💥 Критическая ошибка удаления DAG '{dag_id}': {e}")
+            logger.exception(f"Критическая ошибка удаления DAG '{dag_id}': {e}")
             
             return Response({
                 "status": "error",
@@ -258,7 +276,7 @@ class CleanupOrphanedDAGsView(APIView):
         logger = logging.getLogger(__name__)
         dry_run = request.query_params.get('dry_run', 'false').lower() == 'true'
         
-        logger.info(f"🧹 Запрос очистки осиротевших DAG (dry_run={dry_run})")
+        logger.info(f"Запрос очистки осиротевших DAG (dry_run={dry_run})")
         
         try:
             manager = DAGManager()
@@ -279,7 +297,7 @@ class CleanupOrphanedDAGsView(APIView):
             
             if dry_run:
                 # Режим просмотра - не удаляем
-                logger.info(f"🔍 [DRY RUN] Найдено {len(orphaned_files)} осиротевших файлов")
+                logger.info(f"[DRY RUN] Найдено {len(orphaned_files)} осиротевших файлов")
                 return Response({
                     "status": "success",
                     "message": f"[DRY RUN] Найдено {len(orphaned_files)} осиротевших файлов",
@@ -294,7 +312,7 @@ class CleanupOrphanedDAGsView(APIView):
             # Режим реального удаления
             deleted_count = manager.cleanup_all_orphaned()
             
-            logger.info(f"✅ Удалено {deleted_count} осиротевших файлов из {len(orphaned_files)}")
+            logger.info(f"Удалено {deleted_count} осиротевших файлов из {len(orphaned_files)}")
             
             return Response({
                 "status": "success",
@@ -308,7 +326,7 @@ class CleanupOrphanedDAGsView(APIView):
             })
             
         except Exception as e:
-            logger.exception(f"💥 Ошибка очистки осиротевших файлов: {e}")
+            logger.exception(f"Ошибка очистки осиротевших файлов: {e}")
             
             return Response({
                 "status": "error",
@@ -354,7 +372,7 @@ class DAGHealthReportView(APIView):
             # Генерируем отчет
             health_report = monitoring.get_health_report(hours=hours)
             
-            logger.info(f"📊 Создан health report за {hours} часов, статус: {health_report.get('status')}")
+            logger.info(f"Создан health report за {hours} часов, статус: {health_report.get('status')}")
             
             return Response(health_report)
             
@@ -366,7 +384,7 @@ class DAGHealthReportView(APIView):
             }, status=400)
             
         except Exception as e:
-            logger.exception(f"💥 Ошибка создания health report: {e}")
+            logger.exception(f"Ошибка создания health report: {e}")
             
             return Response({
                 "status": "error",
@@ -415,7 +433,7 @@ class UploadChunkView(APIView):
             source_type = request.data.get('source_type')
             chunk_hash = request.data.get('chunk_hash')
             
-            logger.info(f"📦 Получен чанк {chunk_index + 1}/{total_chunks} для файла {file_name}")
+            logger.info(f"Получен чанк {chunk_index + 1}/{total_chunks} для файла {file_name}")
             
             # Создаем директорию для временных файлов загрузки
             upload_dir = os.path.join(settings.FILE_UPLOAD_TEMP_DIR or '/tmp', 'chunked_uploads', upload_id)
@@ -440,7 +458,7 @@ class UploadChunkView(APIView):
                     'size': chunk.size
                 }, f)
             
-            logger.info(f"✅ Чанк {chunk_index + 1}/{total_chunks} сохранен: {chunk.size} bytes")
+            logger.info(f"Чанк {chunk_index + 1}/{total_chunks} сохранен: {chunk.size} bytes")
             
             return Response({
                 'status': 'success',
@@ -484,8 +502,9 @@ class FinalizeChunkedUploadView(APIView):
             source_type = data.get('source_type')
             file_size = data.get('file_size', 0)
             sample_size = int(data.get('sample_size', 1000))
+            persist = str(data.get('persist', 'true')).lower() == 'true'
             
-            logger.info(f"🔗 Финализация chunked upload: {file_name} ({file_size} bytes)")
+            logger.info(f"Финализация chunked upload: {file_name} ({file_size} bytes)")
             
             upload_dir = os.path.join(settings.FILE_UPLOAD_TEMP_DIR or '/tmp', 'chunked_uploads', upload_id)
             
@@ -526,7 +545,7 @@ class FinalizeChunkedUploadView(APIView):
                             combined_file.write(data_chunk)
                             total_size += len(data_chunk)
                 
-                logger.info(f"📁 Объединено {len(chunks_info)} чанков в файл: {total_size} bytes")
+                logger.info(f"Объединено {len(chunks_info)} чанков в файл: {total_size} bytes")
             
             try:
                 # Запускаем гибридный анализ объединенного файла
@@ -540,7 +559,22 @@ class FinalizeChunkedUploadView(APIView):
                     original_filename=file_name
                 )
                 
-                logger.info(f"✅ Chunked анализ завершен для файла {file_name}")
+                logger.info(f"Chunked анализ завершен для файла {file_name}")
+                
+                persisted_path = None
+                if persist:
+                    # Сохраняем собранный файл в общий каталог для Airflow
+                    safe_name = os.path.basename(file_name)
+                    uploads_dir = '/opt/airflow/data/uploads'
+                    os.makedirs(uploads_dir, exist_ok=True)
+                    persisted_path = os.path.join(uploads_dir, safe_name)
+                    try:
+                        import shutil
+                        shutil.copy2(combined_path, persisted_path)
+                        logger.info(f"💾 Файл сохранен для деплоя: {persisted_path}")
+                    except Exception as save_err:
+                        logger.warning(f"Не удалось сохранить файл в общий каталог: {save_err}")
+                        persisted_path = None
                 
                 return Response({
                     'status': 'success',
@@ -551,7 +585,8 @@ class FinalizeChunkedUploadView(APIView):
                         'processed_size': total_size,
                         'source_type': source_type,
                         'sample_size': sample_size,
-                        'chunks_processed': len(chunks_info)
+                        'chunks_processed': len(chunks_info),
+                        'persisted_path': persisted_path
                     }
                 })
                 
@@ -559,7 +594,7 @@ class FinalizeChunkedUploadView(APIView):
                 # Очищаем временные файлы
                 try:
                     os.unlink(combined_path)
-                    logger.info(f"🧹 Удален объединенный файл: {combined_path}")
+                    logger.info(f"Удален объединенный файл: {combined_path}")
                 except:
                     pass
                 
@@ -567,12 +602,12 @@ class FinalizeChunkedUploadView(APIView):
                 try:
                     import shutil
                     shutil.rmtree(upload_dir)
-                    logger.info(f"🧹 Удалена директория чанков: {upload_dir}")
+                    logger.info(f"Удалена директория чанков: {upload_dir}")
                 except:
                     pass
                     
         except Exception as e:
-            logger.exception(f"❌ Ошибка финализации chunked upload: {e}")
+            logger.exception(f"Ошибка финализации chunked upload: {e}")
             return Response({
                 'error': f'Ошибка обработки загрузки: {str(e)}',
                 'status': 'failed'
@@ -604,7 +639,7 @@ class CleanupUploadView(APIView):
             
             if os.path.exists(upload_dir):
                 shutil.rmtree(upload_dir)
-                logger.info(f"🧹 Очищена директория неудачной загрузки: {upload_id}")
+            logger.info(f"Очищена директория неудачной загрузки: {upload_id}")
             
             return Response({
                 'status': 'success',
@@ -612,7 +647,7 @@ class CleanupUploadView(APIView):
             })
             
         except Exception as e:
-            logger.exception(f"❌ Ошибка очистки загрузки: {e}")
+            logger.exception(f"Ошибка очистки загрузки: {e}")
             return Response({
                 'error': f'Ошибка очистки: {str(e)}',
                 'status': 'failed'
