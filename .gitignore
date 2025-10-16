@@ -1,7 +1,6 @@
 /.cursor
 /venv
 /tests
-/docs
 /Файлы для вайб-кодинга
 to-do.md
 data_structure_analyzer.py
