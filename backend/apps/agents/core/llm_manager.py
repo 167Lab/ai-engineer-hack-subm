@@ -105,8 +105,6 @@ class LLMManager:
             return None
         
         try:
-            from langchain_ollama import ChatOllama
-            
             model_name = ollama_config['models'].get(agent_type, 'llama3.2:latest')
             
             llm = ChatOllama(
