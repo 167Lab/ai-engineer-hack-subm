@@ -164,14 +164,19 @@ class AgentExecutor:
         messages = self._prepare_messages(state)
         
         # Логирование входных данных
-        self._log_input(messages)
+        self._log_input(messages, state)
         
         try:
             # Вызов LLM
-            response = self.llm_manager.invoke_with_retry(self.llm, messages)
+            response = self.llm_manager.invoke_with_retry(
+                self.llm,
+                messages,
+                agent_type=self.agent_name,
+                execution_id=state.get('execution_id')
+            )
             
             # Логирование ответа
-            self._log_response(response)
+            self._log_response(response, state)
             
             # Обработка ответа и обновление состояния
             updated_state = self._process_response(state, response)
@@ -293,12 +298,14 @@ class AgentExecutor:
         
         return state
     
-    def _log_input(self, messages: List[Any]):
+    def _log_input(self, messages: List[Any], state: MASState):
         """Логирование входных данных"""
-        if not self.general_config.get('agents_config', {}).get('verbose', False):
-            return
-        
-        log_file = self.logs_dir / f"{self.agent_name}_inputs.log"
+        # Папка по execution_id/дате
+        exec_id = state.get('execution_id') or 'unknown'
+        day_dir = datetime.now().strftime('%Y-%m-%d')
+        folder = self.logs_dir / day_dir / exec_id / self.agent_name
+        folder.mkdir(parents=True, exist_ok=True)
+        log_file = folder / "inputs.txt"
         timestamp = datetime.now().isoformat()
         
         with open(log_file, 'a', encoding='utf-8') as f:
@@ -306,12 +313,13 @@ class AgentExecutor:
             for msg in messages:
                 f.write(f"{msg.__class__.__name__}: {msg.content}\n")
     
-    def _log_response(self, response: Any):
+    def _log_response(self, response: Any, state: MASState):
         """Логирование ответа"""
-        if not self.general_config.get('agents_config', {}).get('verbose', False):
-            return
-        
-        log_file = self.logs_dir / f"{self.agent_name}_responses.log"
+        exec_id = state.get('execution_id') or 'unknown'
+        day_dir = datetime.now().strftime('%Y-%m-%d')
+        folder = self.logs_dir / day_dir / exec_id / self.agent_name
+        folder.mkdir(parents=True, exist_ok=True)
+        log_file = folder / "responses.txt"
         timestamp = datetime.now().isoformat()
         
         with open(log_file, 'a', encoding='utf-8') as f:

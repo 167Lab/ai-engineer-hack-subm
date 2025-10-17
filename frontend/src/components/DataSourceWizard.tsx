@@ -505,23 +505,18 @@ const DataSourceWizard: React.FC = () => {
     const onFormFinish = async (values: any) => {
         const { source_type, file_path, table, file_input_type } = values;
 
-        // *** НОВАЯ ЛОГИКА: Проверяем если файл уже загружен и проанализирован ***
-        if (file_input_type === 'upload' && uploadedFile && uploadedFile.uploadCompleted && uploadedFile.analysisResult) {
-            console.log('✅ Файл уже загружен и проанализирован, используем готовый результат');
-            
-            // Файл уже на сервере и проанализирован, переходим к следующему шагу
-            setAnalysisResult(uploadedFile.analysisResult);
-            setSourceConfig({
+        // *** ЛОГИКА: если файл уже загружен на сервер — вызываем LLM-анализ через /analyze ***
+        if (file_input_type === 'upload' && uploadedFile && uploadedFile.uploadCompleted) {
+            const payload = {
                 source_type,
                 connection_params: {
                     file_name: uploadedFile.name,
                     is_uploaded: true,
                     server_processed: true
                 }
-            });
-            
-            message.success('Переходим к анализу уже загруженного файла');
-            setCurrent(current + 1);
+            };
+            setSourceConfig(payload);
+            analysisMutation.mutate(payload);
             return;
         }
 
