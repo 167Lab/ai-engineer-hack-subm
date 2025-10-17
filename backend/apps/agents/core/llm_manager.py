@@ -10,7 +10,7 @@ import yaml
 from pathlib import Path
 from datetime import datetime
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("agents.llm")
 
 
 class LLMManager:
