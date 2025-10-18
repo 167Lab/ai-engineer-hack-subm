@@ -24,6 +24,7 @@ data_structure_analyzer.py
 # Ignore Hadoop runtime
 /data/hadoop/
 
+/data/ollama/
 /logs
 
 # Node.js
