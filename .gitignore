@@ -27,6 +27,13 @@ data_structure_analyzer.py
 /data/ollama/
 /logs
 
+# Django/LLM runtime logs
+/backend/logs/
+/backend/apps/agents/logs/
+
+# Generated DAGs from the app
+/infra/airflow/dags/etl_pipeline_*.py
+
 # Node.js
 /frontend/node_modules/
 /frontend/dist/
