@@ -9,6 +9,7 @@ from langchain_core.messages import BaseMessage, HumanMessage
 import yaml
 from pathlib import Path
 from datetime import datetime
+from langchain_ollama import ChatOllama
 
 logger = logging.getLogger("agents.llm")
 

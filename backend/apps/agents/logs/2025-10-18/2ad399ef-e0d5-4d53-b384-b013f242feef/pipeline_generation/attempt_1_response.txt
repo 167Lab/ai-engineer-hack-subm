@@ -1,0 +1,18 @@
+
+--- 20251018_170149 ---
+### Пример ETL DAG для Apache Airflow
+```json
+{
+  "dag_id": "etl_pipeline",
+  "schedule": "0 2 * * *", // Запуск в полночь каждые сутки
+  "transformations": ["cleanse_data", "validate_data"],
+  "dag_code": "from datetime import timedelta\nimport logging\nfrom airflow import DAG\nfrom airflow.operators.python_operator import PythonOperator, BranchPythonOperator\nfrom airflow.utils.dates import days_ago\nfrom include.utils.io import robust_read_csv\n\ndef extract_data(**kwargs):\n    path = kwargs['path']\n    data = robust_read_csv(path)\n    logging.info(f'Successfully extracted {len(data)} rows from CSV file.')\n    return data\n\ndef validate_data(df, **context):\n    # Пример валидации: Проверка наличия обязательных столбцов и типов данных.\n    if not all(column in df.columns for column in ['column1', 'column2']):\n        raise ValueError('Missing required columns!')\n\n    return df\n\ndef load_data(df, **kwargs):\n    conn = kwargs['conn']\n    # Пример загрузки данных в ClickHouse или другое хранилище.\n    # Здесь нужно заменить схему подключения и SQL запросы.\n    logging.info('Loading data into database.')\n\n\ndef on_failure(context):\n    logging.error(f'Task failed: {context}')\n\nwith DAG(\n    'etl_pipeline',\n    default_args={\n        'owner': 'airflow',\n        'depends_on_past': False,\n        'retries': 2,\n        'retry_delay': timedelta(minutes=5),\n        'email_on_failure': True\n    },\n    description='ETL Pipeline for CSV data.',\n    schedule_interval='@daily',\n    start_date=days_ago(1),\n) as dag:\n\n    t1 = PythonOperator(\n        task_id='extract_data',\n        python_callable=extract_data,\n        op_kwargs={'path': 'path/to/your/csv'},\n        on_failure_callback=on_failure,\n    )\n\n    t2 = PythonOperator(\n        task_id='validate_data',\n        python_callable=validate_data,\n        provide_context=True,\n        retries=3,\n    )\n\n    t3 = PythonOperator(\n        task_id='load_data',\n        python_callable=load_data,\n        provide_context=True,\n        retries=3,\n    )\n\n    t1 >> t2 >> t3",
+  "config": {"retries": 2, "retry_delay": 5, "email_on_failure": true},
+  "dependencies": ["python_operator", "dag"],
+  "notes": ["Используйте robust_read_csv для надежного чтения CSV.", "Проверьте конфигурацию DAG для правильной работы с источником и хранилищем."],
+}
+```
+
+Для реализации этого DAG вам потребуется настроить подключение к ClickHouse или другому выбранному источнику данных. Добавьте необходимые операторы Airflow, такие как `PythonOperator`, и убедитесь, что ваша функция `robust_read_csv` корректно обрабатывает CSV-файлы.
+
+Если вам нужен конкретный пример загрузки данных в ClickHouse или другое хранилище, пожалуйста, предоставьте дополнительную информацию.

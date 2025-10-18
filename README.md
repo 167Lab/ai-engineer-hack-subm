@@ -56,6 +56,8 @@ docker compose up -d postgres clickhouse airflow-init
 docker compose up -d airflow-webserver airflow-scheduler backend-api frontend
 ```
 
+Важно: при первом запуске сервис `ollama` автоматически загрузит модель по умолчанию (`qwen2.5:14b`) или модель, указанную в файле конфигураций. Загрузка моделей большего размера может занять несколько минут и заметно использовать сеть/диск/CPU. Пока модель не скачана, backend будет логировать ошибки и использовать заглушку. Просто подождите, пока `ollama-init` завершит работу, затем повторите запрос в UI.
+
 Airflow UI: `http://localhost:8080`
 
 Backend API: `http://localhost:8000`

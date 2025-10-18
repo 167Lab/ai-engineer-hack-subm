@@ -1,4 +1,30 @@
 services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./data/ollama:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Одноразовый init-контейнер: дожидается ollama и триггерит загрузку модели по умолчанию
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: ollama-init
+    command: ["pull", "qwen2.5:14b"]
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_DEFAULT_MODEL=qwen2.5:14b
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
   postgres:
     image: postgres:15
     container_name: postgres
@@ -134,6 +160,7 @@ services:
   # Backend API
   backend-api:
     build: ./backend
+    container_name: backend-api
     volumes:
       - ./backend:/app
       - ./sample_data:/app/data
@@ -143,8 +170,14 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - postgres
-      - clickhouse
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_started
+      ollama:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
     # Оптимизация памяти для обработки больших файлов
     mem_limit: 2g
     mem_reservation: 512m
@@ -159,6 +192,7 @@ services:
   # Frontend UI
   frontend:
     build: ./frontend
+    container_name: frontend
     ports:
       - "3000:80"
     depends_on:

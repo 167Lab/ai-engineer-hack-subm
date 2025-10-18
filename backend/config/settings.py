@@ -16,7 +16,8 @@ import tempfile
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-LOG_DIR = Path(os.environ.get("LOG_DIR", BASE_DIR / "apps" / "agents" / "logs"))
+# Базовая директория логов (по умолчанию в /app/logs внутри контейнера)
+LOG_DIR = Path(os.environ.get("LOG_DIR", BASE_DIR / "logs" / "agents"))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
