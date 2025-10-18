@@ -4,6 +4,7 @@ from airflow.operators.python import PythonOperator
 import logging
 import os
 from include.utils.io import robust_read_csv  # доступно через PYTHONPATH=/opt/airflow/dags
+import pandas as pd
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
