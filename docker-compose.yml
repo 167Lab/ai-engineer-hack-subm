@@ -137,6 +137,7 @@ services:
     volumes:
       - ./backend:/app
       - ./sample_data:/app/data
+      - ./sample_data:/opt/airflow/data
       - ./infra/airflow/dags:/opt/airflow/dags
       - /tmp:/tmp  # Временная директория для больших файлов
     ports:

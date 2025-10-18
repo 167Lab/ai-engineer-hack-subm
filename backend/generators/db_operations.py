@@ -38,16 +38,16 @@ class DatabaseOperations:
         )
         
         row_count = len(df)
-        logger.info("✅ Успешно загружено %d строк в PostgreSQL таблицу processed.{target_table}" % row_count)
+        logger.info("Успешно загружено %d строк в PostgreSQL таблицу processed.{target_table}" % row_count)
         
         # Дополнительно можем выполнить проверку
         with engine.connect() as conn:
             result = conn.execute(f"SELECT COUNT(*) FROM processed.{target_table}").fetchone()
             total_rows = result[0]
-            logger.info("📊 Всего строк в таблице processed.{target_table}: %d" % total_rows)
+            logger.info("Всего строк в таблице processed.{target_table}: %d" % total_rows)
             
     except Exception as e:
-        logger.error("❌ Ошибка загрузки в PostgreSQL: %s" % str(e))
+        logger.error("Ошибка загрузки в PostgreSQL: %s" % str(e))
         raise
 """
 
@@ -90,7 +90,7 @@ class DatabaseOperations:
         \"\"\"
         
         client.execute(create_table_query)
-        logger.info(f"🏗️ Создана/обновлена таблица {target_table} в ClickHouse")
+        logger.info(f"Создана/обновлена таблица {target_table} в ClickHouse")
         
         # Подготовка данных для вставки
         data_rows = df.values.tolist()
@@ -102,17 +102,17 @@ class DatabaseOperations:
         for i in range(0, total_rows, batch_size):
             batch = data_rows[i:i + batch_size]
             client.execute(f"INSERT INTO {target_table} VALUES", batch)
-            logger.info(f"📥 Загружен батч {{i+1}}-{{min(i+batch_size, total_rows)}} из {{total_rows}}")
+            logger.info(f"Загружен батч {{i+1}}-{{min(i+batch_size, total_rows)}} из {{total_rows}}")
         
-        logger.info(f"✅ Успешно загружено {{total_rows}} строк в ClickHouse таблицу {target_table}")
+        logger.info(f"Успешно загружено {{total_rows}} строк в ClickHouse таблицу {target_table}")
         
         # Проверка загрузки
         result = client.execute(f"SELECT COUNT(*) FROM {target_table}")
         total_in_table = result[0][0]
-        logger.info(f"📊 Всего строк в таблице {target_table}: {{total_in_table}}")
+        logger.info(f"Всего строк в таблице {target_table}: {{total_in_table}}")
         
     except Exception as e:
-        logger.error("❌ Ошибка загрузки в ClickHouse: %s" % str(e))
+        logger.error("Ошибка загрузки в ClickHouse: %s" % str(e))
         raise
 """
 
@@ -154,17 +154,17 @@ class DatabaseOperations:
             parquet_path = hdfs_path.replace('.csv', '.parquet')
             parquet_data = df.to_parquet(engine='pyarrow')
             hdfs_client.write(parquet_path, parquet_data, overwrite=True)
-            logger.info(f"📦 Дополнительно сохранен Parquet: {{parquet_path}}")
+            logger.info(f"Дополнительно сохранен Parquet: {{parquet_path}}")
         except Exception as parquet_error:
-            logger.warning(f"⚠️ Не удалось сохранить Parquet: {{parquet_error}}")
+            logger.warning(f"Не удалось сохранить Parquet: {{parquet_error}}")
         
         # Проверка записи
         file_info = hdfs_client.status(hdfs_path)
         file_size = file_info['length']
         
-        logger.info(f"✅ Успешно загружено {{len(df)}} строк в HDFS")
-        logger.info(f"📁 Путь: {{hdfs_path}}")
-        logger.info(f"📊 Размер файла: {{file_size}} байт")
+        logger.info(f"Успешно загружено {{len(df)}} строк в HDFS")
+        logger.info(f"Путь: {{hdfs_path}}")
+        logger.info(f"Размер файла: {{file_size}} байт")
         
         # Создание метаданных файла
         metadata = {{
@@ -180,15 +180,15 @@ class DatabaseOperations:
         import json
         metadata_path = hdfs_path.replace('.csv', '_metadata.json')
         hdfs_client.write(metadata_path, json.dumps(metadata, indent=2), overwrite=True)
-        logger.info(f"📋 Метаданные сохранены: {{metadata_path}}")
+        logger.info(f"Метаданные сохранены: {{metadata_path}}")
         
     except Exception as e:
-        logger.error("❌ Ошибка загрузки в HDFS: %s" % str(e))
+        logger.error("Ошибка загрузки в HDFS: %s" % str(e))
         raise
 """
 
     @classmethod
-    def get_enhanced_extract_code(cls, source_type: str, source_path: str) -> str:
+    def get_enhanced_extract_code(cls, source_type: str, source_path: str, dag_id: str) -> str:
         """Улучшенный код извлечения с обработкой ошибок"""
         return f"""
 def extract_data():
@@ -198,7 +198,7 @@ def extract_data():
     import os
     
     logger = logging.getLogger(__name__)
-    logger.info(f"🔄 Начало извлечения данных из {source_type}")
+    logger.info(f"Начало извлечения данных из {source_type}")
     
     try:
         # Проверка существования файла
@@ -208,19 +208,19 @@ def extract_data():
         # Загрузка данных в зависимости от типа
         if '{source_type}' == 'csv':
             df = pd.read_csv('{source_path}')
-            logger.info(f"📄 Загружено {{len(df)}} строк из CSV файла")
+            logger.info(f"Загружено {{len(df)}} строк из CSV файла")
             
         elif '{source_type}' == 'json':
             df = pd.read_json('{source_path}')
-            logger.info(f"📄 Загружено {{len(df)}} строк из JSON файла")
+            logger.info(f"Загружено {{len(df)}} строк из JSON файла")
             
         elif '{source_type}' == 'xml':
             df = pd.read_xml('{source_path}')
-            logger.info(f"📄 Загружено {{len(df)}} строк из XML файла")
+            logger.info(f"Загружено {{len(df)}} строк из XML файла")
             
         elif '{source_type}' == 'parquet':
             df = pd.read_parquet('{source_path}')
-            logger.info(f"📄 Загружено {{len(df)}} строк из Parquet файла")
+            logger.info(f"Загружено {{len(df)}} строк из Parquet файла")
             
         else:
             raise ValueError(f"Неподдерживаемый тип источника: {source_type}")
@@ -229,7 +229,7 @@ def extract_data():
         if df.empty:
             raise ValueError("Источник данных пуст")
             
-        logger.info(f"📊 Информация о данных:")
+        logger.info(f"Информация о данных:")
         logger.info(f"   - Строк: {{len(df)}}")
         logger.info(f"   - Колонок: {{len(df.columns)}}")
         logger.info(f"   - Колонки: {{', '.join(df.columns)}}")
@@ -239,21 +239,21 @@ def extract_data():
         os.makedirs(temp_dir, exist_ok=True)
         
         # Сохранение во временное расположение
-        temp_path = '/opt/airflow/data/temp/{{dag_id}}_extracted.parquet'
+        temp_path = '/opt/airflow/data/temp/{dag_id}_extracted.parquet'
         df.to_parquet(temp_path, index=False)
-        logger.info("💾 Данные сохранены во временный файл: %s" % temp_path)
+        logger.info("Данные сохранены во временный файл: %s" % temp_path)
         
         return temp_path
         
     except Exception as e:
-        logger.error("❌ Ошибка извлечения данных: %s" % str(e))
+        logger.error("Ошибка извлечения данных: %s" % str(e))
         raise
 """
 
     @classmethod
-    def get_enhanced_transform_code(cls) -> str:
+    def get_enhanced_transform_code(cls, dag_id: str) -> str:
         """Улучшенный код трансформации с дополнительной обработкой"""
-        return """
+        return f"""
 def transform_data():
     '''Расширенная трансформация данных'''
     import pandas as pd
@@ -261,17 +261,17 @@ def transform_data():
     import os
     
     logger = logging.getLogger(__name__)
-    logger.info("🔄 Начало трансформации данных")
+    logger.info("Начало трансформации данных")
     
     try:
-        temp_path = '/opt/airflow/data/temp/{{dag_id}}_extracted.parquet'
+        temp_path = '/opt/airflow/data/temp/{dag_id}_extracted.parquet'
         
         if not os.path.exists(temp_path):
-            raise FileNotFoundError(f"Файл с извлеченными данными не найден: {temp_path}")
+            raise FileNotFoundError("Файл с извлеченными данными не найден: " + temp_path)
             
         df = pd.read_parquet(temp_path)
         initial_rows = len(df)
-        logger.info(f"📊 Загружено {initial_rows} строк для трансформации")
+        logger.info("Загружено %d строк для трансформации" % initial_rows)
         
         # Детальная трансформация данных
         transformation_steps = []
@@ -279,7 +279,7 @@ def transform_data():
         # 1. Обработка пустых значений
         null_counts = df.isnull().sum()
         if null_counts.sum() > 0:
-            logger.info(f"🧹 Найдено пустых значений: {null_counts.sum()}")
+            logger.info("Найдено пустых значений: %d" % null_counts.sum())
             
             # Стратегии обработки пустых значений по типам колонок
             for col in df.columns:
@@ -288,14 +288,38 @@ def transform_data():
                 else:
                     df[col].fillna('Unknown', inplace=True)
             
-            transformation_steps.append(f"Заполнены пустые значения")
+            transformation_steps.append("Заполнены пустые значения")
         
-        # 2. Удаление дубликатов
-        duplicates = df.duplicated().sum()
-        if duplicates > 0:
-            df = df.drop_duplicates()
-            transformation_steps.append(f"Удалено {duplicates} дубликатов")
-            logger.info(f"🔄 Удалено {duplicates} дубликатов")
+        # 2. Удаление дубликатов (устойчиво к не-хэшируемым значениям)
+        try:
+            import numpy as np
+            import json
+            from pandas.util import hash_pandas_object
+
+            def normalize_value(v):
+                if isinstance(v, np.ndarray):
+                    return v.tolist()
+                if isinstance(v, (list, dict)):
+                    return json.dumps(v, ensure_ascii=False, sort_keys=True)
+                return v
+
+            normalized = df.applymap(normalize_value)
+            row_hash = hash_pandas_object(normalized, index=False)
+            duplicates = row_hash.duplicated().sum()
+            if duplicates > 0:
+                df = df.loc[~row_hash.duplicated()].copy()
+                transformation_steps.append("Удалено %d дубликатов" % duplicates)
+                logger.info("Удалено %d дубликатов" % duplicates)
+        except Exception as dup_err:
+            logger.warning(f"Не удалось выполнить устойчивое удаление дубликатов: {{dup_err}}")
+            try:
+                duplicates = df.astype(str).duplicated().sum()
+                if duplicates > 0:
+                    df = df.astype(str).drop_duplicates().copy()
+                    transformation_steps.append("Удалено %d дубликатов (по строковому представлению)" % duplicates)
+                    logger.info("Удалено %d дубликатов (по строковому представлению)" % duplicates)
+            except Exception as fallback_err:
+                logger.warning(f"Резервное удаление дубликатов также не удалось: {{fallback_err}}")
         
         # 3. Стандартизация данных
         # Приведение строковых колонок к нижнему регистру где это имеет смысл
@@ -303,30 +327,30 @@ def transform_data():
         for col in string_columns:
             if col.lower() in ['email', 'city', 'department']:
                 df[col] = df[col].astype(str).str.strip().str.title()
-                transformation_steps.append(f"Стандартизирована колонка {col}")
+                transformation_steps.append("Стандартизирована колонка %s" % col)
         
         # 4. Добавление метаданных
         df['processed_at'] = pd.Timestamp.now()
-        df['processing_batch_id'] = '{{dag_id}}'
+        df['processing_batch_id'] = '{dag_id}'
         transformation_steps.append("Добавлены метаданные обработки")
         
         final_rows = len(df)
-        logger.info(f"✅ Трансформация завершена: {initial_rows} → {final_rows} строк")
+        logger.info("Трансформация завершена: %d → %d строк" % (initial_rows, final_rows))
         
         if transformation_steps:
-            logger.info("🔧 Выполненные трансформации:")
+            logger.info("Выполненные трансформации:")
             for step in transformation_steps:
-                logger.info(f"   - {step}")
+                logger.info("   - %s" % step)
         
         # Сохранение трансформированных данных
-        transformed_path = '/opt/airflow/data/temp/{{dag_id}}_transformed.parquet'
+        transformed_path = '/opt/airflow/data/temp/{dag_id}_transformed.parquet'
         df.to_parquet(transformed_path, index=False)
-        logger.info(f"💾 Трансформированные данные сохранены: {transformed_path}")
+        logger.info("Трансформированные данные сохранены: %s" % transformed_path)
         
         return transformed_path
         
     except Exception as e:
-        logger.error("❌ Ошибка трансформации данных: %s" % str(e))
+        logger.error("Ошибка трансформации данных: %s" % str(e))
         raise
 """
 
@@ -356,7 +380,7 @@ def load_data():
     import os
     
     logger = logging.getLogger(__name__)
-    logger.info("🔄 Начало загрузки данных в {target_type}")
+    logger.info("Начало загрузки данных в {target_type}")
     
     transformed_path = '/opt/airflow/data/temp/{{dag_id}}_transformed.parquet'
     
@@ -364,11 +388,11 @@ def load_data():
         raise FileNotFoundError(f"Файл с трансформированными данными не найден: {transformed_path}")
         
     df = pd.read_parquet(transformed_path)
-    logger.info("📊 Загружено %d строк для записи в целевое хранилище" % len(df))
+    logger.info("Загружено %d строк для записи в целевое хранилище" % len(df))
     
 {loader_function}
     
-    logger.info("✅ Загрузка данных завершена успешно")
+    logger.info("Загрузка данных завершена успешно")
 
 # Аргументы по умолчанию для DAG
 default_args = {{
@@ -395,7 +419,7 @@ with DAG(
     extract_task = PythonOperator(
         task_id='extract_data',
         python_callable=extract_data,
-        doc_md='''### 📥 Извлечение данных
+        doc_md='''### Извлечение данных
         
         **Источник**: {source_type}
         **Путь**: {source_path}
@@ -408,7 +432,7 @@ with DAG(
     transform_task = PythonOperator(
         task_id='transform_data',
         python_callable=transform_data,
-        doc_md='''### 🔧 Трансформация данных
+        doc_md='''### Трансформация данных
         
         Выполняет комплексную очистку и трансформацию данных:
         - Обработка пустых значений
