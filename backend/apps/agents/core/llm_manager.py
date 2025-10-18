@@ -8,8 +8,10 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage
 import yaml
 from pathlib import Path
+from datetime import datetime
+from langchain_ollama import ChatOllama
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("agents.llm")
 
 
 class LLMManager:
@@ -104,8 +106,6 @@ class LLMManager:
             return None
         
         try:
-            from langchain_ollama import ChatOllama
-            
             model_name = ollama_config['models'].get(agent_type, 'llama3.2:latest')
             
             llm = ChatOllama(
@@ -147,7 +147,9 @@ class LLMManager:
     def invoke_with_retry(self, 
                          llm: BaseChatModel, 
                          messages: List[BaseMessage],
-                         retry_count: int = 3) -> Any:
+                         retry_count: int = 3,
+                         agent_type: str | None = None,
+                         execution_id: str | None = None) -> Any:
         """
         Вызов LLM с повторными попытками при ошибках
         
@@ -163,7 +165,10 @@ class LLMManager:
         
         for attempt in range(retry_count):
             try:
+                # Локальный аудит входов/выходов по файлам
+                self._audit_io(messages, agent_type, execution_id, phase=f"attempt_{attempt+1}_request")
                 response = llm.invoke(messages)
+                self._audit_io(response, agent_type, execution_id, phase=f"attempt_{attempt+1}_response")
                 return response
             except Exception as e:
                 last_error = e
@@ -172,6 +177,31 @@ class LLMManager:
                 # Без гибридного режима дополнительных переключений нет
         
         raise last_error
+
+    def _audit_io(self, payload: Any, agent_type: Optional[str], execution_id: Optional[str], phase: str) -> None:
+        try:
+            base_dir = Path(__file__).parent.parent
+            day_dir = datetime.now().strftime('%Y-%m-%d')
+            exec_id = execution_id or 'unknown'
+            name = agent_type or 'unknown'
+            logs_dir = base_dir / 'logs' / day_dir / exec_id / name
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            file_path = logs_dir / f"{phase}.txt"
+            with open(file_path, 'a', encoding='utf-8') as f:
+                f.write(f"\n--- {stamp} ---\n")
+                if isinstance(payload, list):
+                    for m in payload:
+                        try:
+                            f.write(f"{m.__class__.__name__}: {getattr(m,'content',str(m))}\n")
+                        except Exception:
+                            f.write(f"{str(m)}\n")
+                else:
+                    content = getattr(payload, 'content', None)
+                    f.write((content if isinstance(content, str) else str(payload)) + "\n")
+        except Exception as _:
+            # Не ломаем выполнение из‑за аудита
+            pass
     
     def get_model_info(self, agent_type: str) -> Dict[str, Any]:
         """

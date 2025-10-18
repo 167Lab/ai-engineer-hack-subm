@@ -16,6 +16,9 @@ import tempfile
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+# Базовая директория логов (по умолчанию в /app/logs внутри контейнера)
+LOG_DIR = Path(os.environ.get("LOG_DIR", BASE_DIR / "logs" / "agents"))
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # Quick-start development settings - unsuitable for production
@@ -155,3 +158,26 @@ CORS_ALLOWED_ORIGINS = [
 
 # Django REST Framework settings
 REST_FRAMEWORK = { "UNAUTHENTICATED_USER": None }
+
+# Logging configuration: file + console for LLM
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {"format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"},
+    },
+    "handlers": {
+        "llm_file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "level": "INFO",
+            "filename": str(LOG_DIR / "llm.log"),
+            "maxBytes": 5 * 1024 * 1024,
+            "backupCount": 3,
+            "formatter": "verbose",
+        },
+        "console": {"class": "logging.StreamHandler", "formatter": "verbose"},
+    },
+    "loggers": {
+        "agents.llm": {"handlers": ["llm_file", "console"], "level": "INFO", "propagate": False},
+    },
+}

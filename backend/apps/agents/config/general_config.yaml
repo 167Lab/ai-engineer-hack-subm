@@ -16,8 +16,8 @@ llm_config:
       report_generation: "qwen2.5:14b"
     
     # Параметры генерации
-    temperature: 0.75
-    max_tokens: 4096
+    temperature: 0.8
+    max_tokens: 10000
 
 # Настройки агентов
 agents_config:

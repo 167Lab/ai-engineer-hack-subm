@@ -388,6 +388,40 @@ const Step1Form = ({
                                         )}
                                     </div>
                                 )}
+                                
+                                {/* Прогресс загрузки */}
+                                {uploadProgress.visible && (
+                                    <div style={{ marginTop: 12, padding: '12px', backgroundColor: '#f6ffed', borderRadius: '6px', border: '1px solid #b7eb8f' }}>
+                                        <div style={{ marginBottom: '8px', fontWeight: 'bold', color: '#52c41a' }}>
+                                            {uploadProgress.status === 'uploading' && '📤 Загружаем файл по частям...'}
+                                            {uploadProgress.status === 'processing' && '⚙️ Анализируем данные...'}
+                                            {uploadProgress.status === 'complete' && '✅ Загрузка и анализ завершены!'}
+                                            {uploadProgress.status === 'error' && '❌ Ошибка загрузки'}
+                                        </div>
+                                        
+                                        <Progress 
+                                            percent={uploadProgress.percentage} 
+                                            status={uploadProgress.status === 'error' ? 'exception' : 'active'}
+                                            strokeColor={{
+                                                '0%': '#87d068',
+                                                '100%': '#52c41a',
+                                            }}
+                                            format={(percent) => `${percent}%`}
+                                        />
+                                        
+                                        {uploadProgress.totalChunks > 1 && (
+                                            <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                                                Чанк {uploadProgress.currentChunk} из {uploadProgress.totalChunks}
+                                            </div>
+                                        )}
+                                        
+                                        {uploadProgress.message && (
+                                            <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                                                {uploadProgress.message}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </Form.Item>
                         )}
                         
@@ -518,10 +552,9 @@ const DataSourceWizard: React.FC = () => {
                     is_uploaded: true,
                     server_processed: true
                 }
-            });
-            
-            message.success('Переходим к анализу уже загруженного файла');
-            setCurrent(current + 1);
+            };
+            setSourceConfig(payload);
+            analysisMutation.mutate(payload);
             return;
         }
 
