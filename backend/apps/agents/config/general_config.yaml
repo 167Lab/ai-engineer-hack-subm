@@ -18,6 +18,8 @@ llm_config:
     # Параметры генерации
     temperature: 0.8
     max_tokens: 10000
+  # Строгий режим: при недоступности Ollama не использовать заглушки, а падать с ошибкой
+  strict_ollama: true
 
 # Настройки агентов
 agents_config:

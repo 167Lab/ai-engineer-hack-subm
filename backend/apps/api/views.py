@@ -15,16 +15,165 @@ from services.airflow import render_dag_py, deploy_dag_to_airflow, get_recs_for_
 class AnalyzeDataSourceView(APIView):
     def post(self, request):
         import asyncio
+        import logging
+        import csv
+        import json
+        from pathlib import Path
+        
+        logger = logging.getLogger(__name__)
+        logger.info(f"🎯 POST /api/v1/analyze received with data: {request.data}")
         
         ser = DataSourceAnalysisRequestSer(data=request.data)
         ser.is_valid(raise_exception=True)
         
+        logger.info(f"🎯 Validated data: {ser.validated_data}")
+        
         try:
+            # Получаем путь к файлу
+            connection_params = ser.validated_data.get('connection_params', {})
+            file_path = connection_params.get('file_path')
+            source_type = ser.validated_data.get('source_type', 'csv')
+            
+            # Читаем образец данных и метаданные
+            sample_data = []
+            metadata = {}
+            
+            if file_path and Path(file_path).exists():
+                logger.info(f"🎯 Reading sample from file: {file_path}")
+                
+                # Анализируем файл для получения метаданных
+                from analyzers.hybrid_file_analyzer import HybridFileAnalyzer
+                analyzer = HybridFileAnalyzer()
+                metadata = analyzer.analyze_uploaded_file(
+                    file_path=file_path,
+                    source_type=source_type,
+                    sample_size=50,
+                    original_filename=Path(file_path).name
+                )
+                
+                # Читаем первые 50 строк для образца
+                try:
+                    if source_type.lower() == 'csv':
+                        with open(file_path, 'r', encoding='utf-8', newline='') as f:
+                            reader = csv.DictReader(f)
+                            for i, row in enumerate(reader):
+                                if i >= 50:
+                                    break
+                                sample_data.append(row)
+                    elif source_type.lower() == 'json':
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            content = f.read().strip()
+                            try:
+                                parsed = json.loads(content)
+                                if isinstance(parsed, list):
+                                    sample_data = parsed[:50]
+                                else:
+                                    sample_data = [parsed]
+                            except Exception:
+                                # JSONL format
+                                for i, line in enumerate(content.splitlines()):
+                                    if i >= 50:
+                                        break
+                                    if line.strip():
+                                        sample_data.append(json.loads(line))
+                except Exception as e:
+                    logger.warning(f"Не удалось прочитать образец данных: {e}")
+            
+            # Добавляем sample и metadata к validated_data
+            enriched_data = dict(ser.validated_data)
+            enriched_data['data_sample'] = sample_data
+            enriched_data['source_metadata'] = metadata
+            
+            logger.info(f"🎯 Enriched data with sample ({len(sample_data)} rows) and metadata")
+            
             mas = LLMIntegration()
-            # Запускаем async функцию в event loop
-            result = asyncio.run(mas.analyze_data_source(ser.validated_data))
+            logger.info("🎯 Starting LLMIntegration.run_input_analysis...")
+            # Запускаем только первый этап - анализ входных данных
+            result = asyncio.run(mas.run_input_analysis(enriched_data))
+            logger.info(f"🎯 Input analysis complete, session_id: {result.get('session_id')}")
             return Response(result)
         except Exception as e:
+            logger.error(f"🎯 Analysis failed: {e}", exc_info=True)
+            return Response({
+                'error': str(e),
+                'status': 'failed'
+            }, status=400)
+
+class LLMHealthView(APIView):
+    """Проверка доступности Ollama и модели с бэкенда"""
+    def get(self, request):
+        try:
+            mgr = LLMIntegration().llm_manager
+            reach = mgr.is_ollama_reachable()
+            info = mgr.get_model_info('input_analysis')
+            return Response({ 'reachable': reach.get('reachable', False), 'probe': reach, 'model': info })
+        except Exception as e:
+            return Response({ 'reachable': False, 'error': str(e) }, status=500)
+
+# /api/v1/generate_pipeline
+class GeneratePipelineView(APIView):
+    """Генерация DDL и пайплайна после выбора пользователя"""
+    def post(self, request):
+        import asyncio
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        logger.info(f"🎯 POST /api/v1/generate_pipeline received")
+        
+        try:
+            session_id = request.data.get('session_id')
+            user_choices = request.data.get('user_choices', {})
+            
+            if not session_id:
+                return Response({
+                    'error': 'session_id is required',
+                    'status': 'failed'
+                }, status=400)
+            
+            logger.info(f"🎯 Generating pipeline for session {session_id}")
+            
+            mas = LLMIntegration()
+            result = asyncio.run(mas.run_ddl_and_pipeline(session_id, user_choices))
+            
+            logger.info(f"🎯 Pipeline generation complete for session {session_id}")
+            return Response(result)
+            
+        except Exception as e:
+            logger.error(f"🎯 Pipeline generation failed: {e}", exc_info=True)
+            return Response({
+                'error': str(e),
+                'status': 'failed'
+            }, status=400)
+
+# /api/v1/generate_report
+class GenerateReportView(APIView):
+    """Генерация отчета после всех этапов"""
+    def post(self, request):
+        import asyncio
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        logger.info(f"🎯 POST /api/v1/generate_report received")
+        
+        try:
+            session_id = request.data.get('session_id')
+            
+            if not session_id:
+                return Response({
+                    'error': 'session_id is required',
+                    'status': 'failed'
+                }, status=400)
+            
+            logger.info(f"🎯 Generating report for session {session_id}")
+            
+            mas = LLMIntegration()
+            result = asyncio.run(mas.run_report_generation(session_id))
+            
+            logger.info(f"🎯 Report generation complete for session {session_id}")
+            return Response(result)
+            
+        except Exception as e:
+            logger.error(f"🎯 Report generation failed: {e}", exc_info=True)
             return Response({
                 'error': str(e),
                 'status': 'failed'

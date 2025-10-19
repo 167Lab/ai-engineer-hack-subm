@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Card, Steps, Button, message, Form, Select, Input, Upload, Radio, Space, Alert, Progress } from 'antd';
 import { UploadOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import { useMutation } from '@tanstack/react-query';
-import { analyzeDataSource } from '../services/api';
+import { analyzeDataSource, generatePipeline, generateReport } from '../services/api';
 import { SourceType, TargetType, AnalysisResult, MASAnalysisResult } from '../types';
 import AnalysisDisplay from './AnalysisDisplay';
 import { PipelineConfigData } from './PipelineConfig';
@@ -35,7 +35,7 @@ const Step1Form = ({
     const sourceType = Form.useWatch('source_type', form);
     const fileInputType = Form.useWatch('file_input_type', form) || 'path';
 
-    const handleFileUpload = async (file: any) => {
+    const handleFileUpload = async (file: File) => {
         // Проверяем размер файла (увеличен лимит до 1 ГБ)
         const maxSize = 1024 * 1024 * 1024; // 1 ГБ
         if (file.size > maxSize) {
@@ -85,7 +85,7 @@ const Step1Form = ({
     };
 
     // Новая функция для немедленной загрузки файла на сервер
-    const startImmediateUpload = async (file: any, detectedType: string) => {
+    const startImmediateUpload = async (file: File, detectedType: string) => {
         try {
             // Обновляем состояние - начинаем загрузку
             setUploadedFile((prev: any) => prev ? {...prev, isUploading: true} : null);
@@ -285,7 +285,7 @@ const Step1Form = ({
                                 </Form.Item>
                                 <ServerFileBrowser
                                     rootPath="/opt/airflow/data/uploads"
-                                    onSelectPath={(p) => form.setFieldsValue({ file_path: p })}
+                                    onSelectPath={(p: string) => form.setFieldsValue({ file_path: p })}
                                 />
                             </>
                         ) : (
@@ -380,7 +380,7 @@ const Step1Form = ({
                                                 '0%': '#87d068',
                                                 '100%': '#52c41a',
                                             }}
-                                            format={(percent) => `${percent}%`}
+                                            format={(percent?: number) => `${percent ?? 0}%`}
                                         />
                                         
                                         {uploadProgress.totalChunks > 1 && (
@@ -454,7 +454,7 @@ const Step1Form = ({
     );
 };
 
-const DataSourceWizard: React.FC<{ resetSignal?: number }> = ({ resetSignal }) => {
+const DataSourceWizard: React.FC<{ resetSignal?: number }> = ({ resetSignal }: { resetSignal?: number }) => {
     const [current, setCurrent] = useState(0);
     const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
     const [selectedStorage, setSelectedStorage] = useState<TargetType | undefined>(undefined);
@@ -477,31 +477,59 @@ const DataSourceWizard: React.FC<{ resetSignal?: number }> = ({ resetSignal }) =
         message: ''
     });
     const [uploadedFile, setUploadedFile] = useState<any>(null);
+    const [sessionId, setSessionId] = useState<string | null>(null);
+    const [pipelineResult, setPipelineResult] = useState<any>(null);
+    const [reportResult, setReportResult] = useState<any>(null);
 
     // Reset to first step when resetSignal changes
     React.useEffect(() => {
         if (typeof resetSignal === 'number') {
             setCurrent(0);
+            setSessionId(null);
+            setPipelineResult(null);
+            setReportResult(null);
         }
     }, [resetSignal]);
 
     const analysisMutation = useMutation<MASAnalysisResult, Error, any>({
         mutationFn: analyzeDataSource,
-        onSuccess: (data) => {
-            message.success('Анализ успешно завершен!');
-            // Преобразуем MAS результат в удобный формат
+        onSuccess: (data: any) => {
+            message.success('Анализ входных данных завершен!');
+            
+            // Сохраняем session_id для последующих вызовов
+            if (data.session_id) {
+                setSessionId(data.session_id);
+                console.log('📌 Session ID saved:', data.session_id);
+            }
+            
+            // Преобразуем результат в удобный формат
             const processedResult: AnalysisResult = {
-                row_count: data.analysis_result?.metadata?.row_count || 0,
-                column_count: data.analysis_result?.metadata?.column_count || 0,
-                columns: data.analysis_result?.metadata?.columns || {},
-                data_quality: data.analysis_result?.data_quality,
-                recommendations: data.analysis_result?.recommendations || [],
+                row_count: data.source_metadata?.total_rows || data.analysis_result?.metadata?.row_count || 0,
+                column_count: data.source_metadata?.columns?.length || data.analysis_result?.metadata?.column_count || 0,
+                columns: data.source_metadata?.column_types || data.analysis_result?.metadata?.columns || {},
+                data_quality: data.data_quality_score || data.analysis_result?.data_quality,
+                recommendations: [
+                    ...(data.storage_recommendation ? [{
+                        type: 'storage',
+                        priority: 'high',
+                        title: 'Рекомендованное хранилище',
+                        description: data.storage_recommendation,
+                        details: data.optimization_recommendations
+                    }] : []),
+                    ...(data.alternative_storages || []).map((alt: any) => ({
+                        type: 'storage',
+                        priority: alt.priority === 1 ? 'high' : alt.priority === 2 ? 'medium' : 'low',
+                        title: `Альтернатива: ${alt.storage}`,
+                        description: alt.reason
+                    })),
+                    ...(data.analysis_result?.recommendations || [])
+                ],
                 llm_recommendations: data.analysis_result?.llm_recommendations,
                 error: data.error,
                 raw_response: data
             };
             setAnalysisResult(processedResult);
-            setCurrent(prev => prev + 1);
+            setCurrent((prev: number) => prev + 1);
         },
         onError: (error: Error) => {
             message.error(`Ошибка при анализе: ${error.message}`);
@@ -510,39 +538,84 @@ const DataSourceWizard: React.FC<{ resetSignal?: number }> = ({ resetSignal }) =
 
     // Старая streamingAnalysisMutation удалена - теперь используем немедленную загрузку при выборе файла
 
+    const pipelineMutation = useMutation({
+        mutationFn: generatePipeline,
+        onSuccess: (data) => {
+            message.success('DDL и пайплайн успешно сгенерированы!');
+            setPipelineResult(data);
+            
+            // Store DDL and pipeline results for DAG generation
+            if (data.ddl_result) {
+                localStorage.setItem('ddl_result', JSON.stringify(data.ddl_result));
+            }
+            if (data.pipeline_result) {
+                localStorage.setItem('pipeline_result', JSON.stringify(data.pipeline_result));
+            }
+            
+            setCurrent((prev: number) => prev + 1);
+        },
+        onError: (error: Error) => {
+            message.error(`Ошибка генерации пайплайна: ${error.message}`);
+        }
+    });
+
+    const reportMutation = useMutation({
+        mutationFn: generateReport,
+        onSuccess: (data) => {
+            message.success('Отчет успешно сгенерирован!');
+            setReportResult(data);
+        },
+        onError: (error: Error) => {
+            message.error(`Ошибка генерации отчета: ${error.message}`);
+        }
+    });
+
     const handleNext = () => {
+        console.log('🔵 handleNext called, current step:', current);
         if (current === 0) {
+            console.log('🔵 Submitting form...');
             form.submit();
+        } else if (current === 2) {
+            // Moving from storage selection to pipeline generation
+            if (selectedStorage && pipelineConfig && sessionId) {
+                console.log('🔵 Triggering pipeline generation with session:', sessionId);
+                pipelineMutation.mutate({
+                    session_id: sessionId,
+                    user_choices: {
+                        storage_type: selectedStorage,
+                        pipeline_params: {
+                            ...pipelineConfig,
+                            schedule: pipelineConfig.schedule || '0 0 * * *',
+                            retries: pipelineConfig.retries || 2,
+                            email_on_failure: pipelineConfig.emailOnFailure || false
+                        }
+                    }
+                });
+            } else {
+                message.warning('Выберите хранилище и настройте параметры пайплайна');
+            }
         } else if (canGoToNextStep()) {
-            setCurrent(prev => prev + 1);
+            console.log('🔵 Moving to next step');
+            setCurrent((prev: number) => prev + 1);
         } else {
+            console.log('🔵 Cannot proceed to next step');
             message.warning('Пожалуйста, завершите текущий шаг перед переходом к следующему');
         }
     };
 
     const handlePrev = () => {
-        setCurrent(prev => prev - 1);
+        setCurrent((prev: number) => prev - 1);
     };
 
     const onFormFinish = async (values: any) => {
+        console.log('🟢 onFormFinish called with values:', values);
         const { source_type, file_path, table, file_input_type } = values;
 
-        // *** НОВАЯ ЛОГИКА: Проверяем если файл уже загружен и проанализирован ***
+        // Если файл уже загружен и есть быстрый предпросмотр (streaming анализ),
+        // используем его для UI, но всё равно запускаем LLM-анализ на бэкенде ниже.
         if (file_input_type === 'upload' && uploadedFile && uploadedFile.uploadCompleted && uploadedFile.analysisResult) {
-            console.log('Файл уже загружен, переходим к следующему шагу');
-            
-            // Файл уже на сервере и проанализирован, переходим к следующему шагу
+            console.log('🟢 File already uploaded, using preview result for UI');
             setAnalysisResult(uploadedFile.analysisResult);
-            setSourceConfig({
-                source_type,
-                connection_params: {
-                    file_name: uploadedFile.name,
-                    is_uploaded: true,
-                    server_processed: true
-                }
-            });
-            setCurrent(prev => prev + 1);
-            return;
         }
 
         // Если загрузка еще не завершена, блокируем переход
@@ -557,7 +630,7 @@ const DataSourceWizard: React.FC<{ resetSignal?: number }> = ({ resetSignal }) =
             return;
         }
 
-        let connection_params = {};
+        let connection_params: any = {};
 
         switch (source_type) {
             case SourceType.CSV:
@@ -570,10 +643,16 @@ const DataSourceWizard: React.FC<{ resetSignal?: number }> = ({ resetSignal }) =
                         message.warning('Файл еще не загружен на сервер. Дождитесь завершения загрузки.');
                         return;
                     }
+                    // Получаем путь к файлу из результата загрузки
+                    const persistedPath = uploadedFile.analysisResult?.raw_response?.file_info?.persisted_path;
+                    if (!persistedPath) {
+                        message.error('Не найден путь к загруженному файлу на сервере');
+                        return;
+                    }
                     connection_params = {
+                        file_path: persistedPath,
                         file_name: uploadedFile.name,
-                        is_uploaded: true,
-                        server_processed: true
+                        is_uploaded: true
                     };
                 } else {
                     // Для файла, уже лежащего на сервере, передаем путь
@@ -594,12 +673,13 @@ const DataSourceWizard: React.FC<{ resetSignal?: number }> = ({ resetSignal }) =
             connection_params,
         };
         
-        console.log('Отправляем на анализ:', payload);
+        console.log('🚀 [UI] POST /api/v1/analyze с payload:', payload);
+        console.log('   file_path:', connection_params.file_path || 'NOT SET');
         
         // Сохраняем конфигурацию источника для дальнейшего использования
         setSourceConfig(payload);
         // Переходим сразу к шагу анализа и показываем индикатор, пока идет анализ
-        setCurrent(prev => prev + 1);
+        setCurrent((prev: number) => prev + 1);
         analysisMutation.mutate(payload);
     };
 
@@ -668,12 +748,22 @@ const DataSourceWizard: React.FC<{ resetSignal?: number }> = ({ resetSignal }) =
         {
             title: 'Хранилище и конфигурация',
             content: analysisResult ? (
-                <StorageAndConfig
-                    recommendations={analysisResult.recommendations}
-                    selectedStorage={selectedStorage}
-                    onStorageSelect={handleStorageSelect}
-                    onConfigChange={handlePipelineConfigChange}
-                />
+                <>
+                    <StorageAndConfig 
+                        recommendations={analysisResult.recommendations}
+                        selectedStorage={selectedStorage}
+                        onStorageSelect={handleStorageSelect}
+                        onConfigChange={handlePipelineConfigChange}
+                    />
+                    {pipelineMutation.isPending && (
+                        <Card size="small" style={{ marginTop: 16 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <Progress percent={50} status="active" style={{ flex: 1 }} />
+                                <span>Генерация DDL и пайплайна...</span>
+                            </div>
+                        </Card>
+                    )}
+                </>
             ) : (
                 <p>Сначала завершите анализ данных</p>
             ),
@@ -681,12 +771,33 @@ const DataSourceWizard: React.FC<{ resetSignal?: number }> = ({ resetSignal }) =
         {
             title: 'Предпросмотр и запуск',
             content: (sourceConfig && selectedStorage && pipelineConfig) ? (
-                <DAGPreview 
-                    sourceConfig={sourceConfig}
-                    selectedStorage={selectedStorage}
-                    pipelineConfig={pipelineConfig}
-                    analysisResult={analysisResult}
-                />
+                <div>
+                    <DAGPreview 
+                        sourceConfig={sourceConfig}
+                        selectedStorage={selectedStorage}
+                        pipelineConfig={pipelineConfig}
+                        analysisResult={analysisResult}
+                    />
+                    {sessionId && (
+                        <div style={{ marginTop: 16 }}>
+                            <Button 
+                                type="default" 
+                                onClick={() => reportMutation.mutate({ session_id: sessionId })}
+                                loading={reportMutation.isPending}
+                            >
+                                Сгенерировать отчет
+                            </Button>
+                            {reportResult && (
+                                <Card size="small" style={{ marginTop: 16 }}>
+                                    <h4>Отчет</h4>
+                                    <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px' }}>
+                                        {reportResult.report || JSON.stringify(reportResult, null, 2)}
+                                    </pre>
+                                </Card>
+                            )}
+                        </div>
+                    )}
+                </div>
             ) : (
                 <p>Завершите все предыдущие шаги</p>
             ),
@@ -718,12 +829,14 @@ const DataSourceWizard: React.FC<{ resetSignal?: number }> = ({ resetSignal }) =
                         onClick={handleNext} 
                         loading={
                             analysisMutation.isPending || 
+                            pipelineMutation.isPending ||
                             (current === 0 && uploadedFile && uploadedFile.isUploading)
                         }
                         disabled={!canGoToNextStep()}
                         aria-label="Далее"
                     >
-                        {current === 0 && uploadedFile && uploadedFile.isUploading ? 'Загружается файл...' : 'Далее'}
+                        {current === 0 && uploadedFile && uploadedFile.isUploading ? 'Загружается файл...' : 
+                         current === 2 && pipelineMutation.isPending ? 'Генерация...' : 'Далее'}
                     </Button>
                 )}
             </div>
