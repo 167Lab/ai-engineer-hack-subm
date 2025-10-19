@@ -167,6 +167,132 @@ class AnalyzeFileStreamView(APIView):
                 'status': 'failed'
             }, status=500)
 
+# /api/v1/list_files
+class ListFilesView(APIView):
+    """Возвращает дерево файлов начиная с /opt/airflow/data (c ограничением глубины)"""
+    def get(self, request):
+        import os
+        from pathlib import Path
+
+        root_requested = request.query_params.get('path', '/opt/airflow/data/uploads')
+        try:
+            depth = int(request.query_params.get('depth', '3'))
+        except Exception:
+            depth = 3
+
+        # Разрешаем только uploads подкаталог
+        allowed_root = Path('/opt/airflow/data/uploads').resolve()
+        root_path = Path(root_requested).resolve()
+        if not str(root_path).startswith(str(allowed_root)):
+            return Response({'error': 'Выход за пределы разрешенного каталога'}, status=400)
+
+        def build_tree(path: Path, d: int):
+            node = {
+                'title': path.name if path != allowed_root else str(path),
+                'key': str(path),
+                'isLeaf': path.is_file(),
+            }
+            if d <= 0 or path.is_file():
+                return node
+            children = []
+            try:
+                for entry in sorted(path.iterdir(), key=lambda p: (p.is_file(), p.name.lower())):
+                    if entry.name.startswith('.'):
+                        continue
+                    children.append(build_tree(entry, d - 1))
+                    if len(children) >= 200:
+                        break
+            except Exception:
+                pass
+            if children:
+                node['children'] = children
+            return node
+
+        tree = build_tree(root_path, depth)
+        return Response({'tree': tree})
+
+# /api/v1/preview
+class PreviewFileView(APIView):
+    """Возвращает первые N строк файла в табличном виде для CSV/JSON/XML"""
+    def get(self, request):
+        import csv, json
+        from pathlib import Path
+        from xml.etree import ElementTree as ET
+
+        file_path = request.query_params.get('path')
+        source_type = request.query_params.get('type')
+        try:
+            rows_limit = int(request.query_params.get('rows', '50'))
+        except Exception:
+            rows_limit = 50
+
+        if not file_path or not source_type:
+            return Response({'error': 'path и type обязательны'}, status=400)
+
+        allowed_root = Path('/opt/airflow/data').resolve()
+        p = Path(file_path).resolve()
+        if not str(p).startswith(str(allowed_root)):
+            return Response({'error': 'Выход за пределы разрешенного каталога'}, status=400)
+        if not p.exists() or not p.is_file():
+            return Response({'error': 'Файл не найден'}, status=404)
+
+        columns = []
+        rows = []
+
+        try:
+            if source_type.lower() == 'csv':
+                with open(p, 'r', encoding='utf-8', newline='') as f:
+                    reader = csv.DictReader(f)
+                    for i, row in enumerate(reader):
+                        if i == 0:
+                            columns = list(row.keys())
+                        rows.append(row)
+                        if i + 1 >= rows_limit:
+                            break
+            elif source_type.lower() == 'json':
+                with open(p, 'r', encoding='utf-8') as f:
+                    content = f.read().strip()
+                try:
+                    parsed = json.loads(content)
+                except Exception:
+                    parsed = [json.loads(line) for line in content.splitlines() if line.strip()][:rows_limit]
+                if isinstance(parsed, list):
+                    for i, item in enumerate(parsed[:rows_limit]):
+                        if isinstance(item, dict):
+                            if not columns:
+                                columns = list(item.keys())
+                            rows.append(item)
+                        else:
+                            rows.append({'value': item})
+                    if not columns and rows:
+                        columns = list(rows[0].keys())
+                elif isinstance(parsed, dict):
+                    rows = [parsed]
+                    columns = list(parsed.keys())
+                else:
+                    rows = [{'value': str(parsed)}]
+                    columns = ['value']
+            elif source_type.lower() == 'xml':
+                tree = ET.parse(str(p))
+                root = tree.getroot()
+                for i, child in enumerate(list(root)[:rows_limit]):
+                    row = {}
+                    for k, v in child.attrib.items():
+                        row[k] = v
+                    for sub in list(child):
+                        row[sub.tag] = (sub.text or '').strip()
+                    if not row:
+                        row[root.tag] = (child.text or '').strip()
+                    rows.append(row)
+                if rows:
+                    columns = sorted(set(k for r in rows for k in r.keys()))
+            else:
+                return Response({'error': f'Неподдерживаемый тип: {source_type}'}, status=400)
+
+            return Response({'columns': columns, 'rows': rows})
+        except Exception as e:
+            return Response({'error': f'Ошибка предпросмотра: {str(e)}'}, status=500)
+
 # /api/v1/generate_dag
 class GenerateDAGView(APIView):
     def post(self, request):
@@ -452,6 +578,106 @@ class DAGHealthReportView(APIView):
                 "message": "Ошибка при создании отчета о состоянии",
                 "details": {"exception": str(e)}
             }, status=500)
+
+# /api/v1/auth/login
+class LoginView(APIView):
+    """Простая dev-аутентификация: возвращает фиктивный JWT для фронтенда"""
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+        if not username or not password:
+            return Response({ 'error': 'username и password обязательны' }, status=400)
+        # Dev-проверка. В проде заменить на реальную аутентификацию
+        if username == 'admin' and password == 'admin':
+            return Response({ 'token': 'dev-admin-token', 'user': { 'username': username } })
+        return Response({ 'error': 'Неверные учетные данные' }, status=401)
+
+# /api/v1/airflow/bootstrap-session
+class AirflowBootstrapSessionView(APIView):
+    """Создает сессию в Airflow от имени admin/admin и возвращает статус"""
+    def post(self, request):
+        import requests
+        airflow_base = request.data.get('airflow_url') or 'http://localhost:8080'
+        username = request.data.get('username') or 'admin'
+        password = request.data.get('password') or 'admin'
+        try:
+            session = requests.Session()
+            # Airflow (FAB) логин форма
+            resp = session.get(f"{airflow_base}/login/")
+            if resp.status_code >= 400:
+                return Response({ 'status': 'failed', 'airflow_api_status': f'Ошибка доступа: {resp.status_code}' }, status=502)
+            payload = { 'username': username, 'password': password }
+            resp2 = session.post(f"{airflow_base}/login/", data=payload, allow_redirects=False)
+            if resp2.status_code in (302, 200):
+                # Сохраняем cookie Airflow в серверной сессии
+                try:
+                    s = request.session
+                    s['airflow_base'] = airflow_base
+                    s['airflow_cookies'] = requests.utils.dict_from_cookiejar(session.cookies)
+                    s.save()
+                except Exception:
+                    pass
+                dag_url = f"{airflow_base}/home"
+                return Response({
+                    'status': 'success',
+                    'airflow_api_status': 'Сессия создана',
+                    'airflow_ui_url': airflow_base,
+                    'airflow_home_url': dag_url,
+                })
+            return Response({ 'status': 'failed', 'airflow_api_status': f'Ошибка логина: {resp2.status_code}' }, status=502)
+        except Exception as e:
+            return Response({ 'status': 'failed', 'airflow_api_status': f'Исключение: {str(e)}' }, status=500)
+
+# /api/v1/airflow/proxy/<path:subpath>
+class AirflowProxyView(APIView):
+    """Простой reverse-proxy к Airflow, использует сохраненные cookie в сессии"""
+    def dispatch(self, request, *args, **kwargs):
+        # Переопределяем dispatch чтобы поддержать все методы
+        import requests
+        from django.http import HttpResponse
+        s = request.session
+        airflow_base = s.get('airflow_base') or 'http://localhost:8080'
+        cookies_dict = s.get('airflow_cookies')
+        if cookies_dict is None:
+            # Сессия Airflow не инициализирована
+            return HttpResponse('Airflow session is not initialized. Please login first.', status=401, content_type='text/plain; charset=utf-8')
+
+        subpath = kwargs.get('subpath') or ''
+        target_url = f"{airflow_base}/" + subpath.lstrip('/')
+
+        method = request.method.lower()
+        params = request.GET.dict()
+        data = request.body if request.body else None
+        headers = {k: v for k, v in request.headers.items() if k.lower() not in ['host', 'cookie', 'content-length']}
+        try:
+            resp = requests.request(method, target_url, params=params, data=data, headers=headers, cookies=cookies_dict, allow_redirects=False, stream=True)
+            # Обновим cookies если изменились
+            try:
+                request.session['airflow_cookies'] = requests.utils.dict_from_cookiejar(resp.cookies)
+                request.session.modified = True
+            except Exception:
+                pass
+            django_resp = HttpResponse(resp.content, status=resp.status_code)
+            # Проксируем тип контента
+            ct = resp.headers.get('Content-Type', 'text/html; charset=utf-8')
+            django_resp['Content-Type'] = ct
+            # Проксируем редирект
+            if 'Location' in resp.headers:
+                django_resp['Location'] = resp.headers['Location']
+            return django_resp
+        except Exception as e:
+            # Возвращаем обычный HttpResponse, чтобы DRF не пытался рендерить JSON
+            return HttpResponse(f'Proxy error: {str(e)}', status=502, content_type='text/plain; charset=utf-8')
+
+# /api/v1/auth/logout
+class LogoutView(APIView):
+    """Сброс сессии Django и выход пользователя (для UI)."""
+    def post(self, request):
+        try:
+            request.session.flush()
+        except Exception:
+            pass
+        return Response({ 'status': 'success' })
 
 # /api/v1/upload_chunk
 class UploadChunkView(APIView):

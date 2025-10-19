@@ -5,3 +5,10 @@ body {
   padding: 2rem;
   background-color: #f0f2f5;
 }
+
+/* Focus ring for accessibility */
+:where(button, [role="button"], input, select, textarea, .ant-select, .ant-input, .ant-btn) :focus-visible,
+:where(button, [role="button"], input, select, textarea, .ant-select, .ant-input, .ant-btn):focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
+}
