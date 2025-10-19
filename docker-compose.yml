@@ -17,7 +17,7 @@ services:
   ollama-init:
     image: ollama/ollama:latest
     container_name: ollama-init
-    command: ["pull", "qwen2.5:14b"]
+    command: ["pull", "qwen2.5:7b"]
     volumes:
       - ./data/ollama:/root/.ollama
     environment:

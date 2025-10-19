@@ -1,5 +1,5 @@
 import React from 'react';
-import { Form, Input, Select, Card, Typography, Alert } from 'antd';
+import { Form, Input, Select, Card, Typography, Alert, InputNumber, Switch } from 'antd';
 import { ClockCircleOutlined, SettingOutlined } from '@ant-design/icons';
 import { TargetType } from '../types';
 
@@ -16,6 +16,8 @@ export interface PipelineConfigData {
     target_table: string;
     schedule: string;
     description: string;
+    retries: number;
+    emailOnFailure: boolean;
 }
 
 const scheduleOptions = [
@@ -82,7 +84,9 @@ const PipelineConfig: React.FC<PipelineConfigProps> = ({ selectedStorage, onConf
                     pipeline_name: 'etl_pipeline_' + Date.now().toString().slice(-6),
                     target_table: selectedStorage === TargetType.HDFS ? '/data/processed/my_data' : 'my_table',
                     schedule: '@daily',
-                    description: 'Автоматически созданный ETL пайплайн'
+                    description: 'Автоматически созданный ETL пайплайн',
+                    retries: 2,
+                    emailOnFailure: false,
                 }}
             >
                 <Card size="small" title={<><SettingOutlined /> Основные параметры</>} style={{ marginBottom: 16 }}>
@@ -118,7 +122,7 @@ const PipelineConfig: React.FC<PipelineConfigProps> = ({ selectedStorage, onConf
                     </Form.Item>
                 </Card>
 
-                <Card size="small" title={<><ClockCircleOutlined /> Расписание запуска</>}>
+                <Card size="small" title={<><ClockCircleOutlined /> Расписание запуска</>} style={{ marginBottom: 16 }}>
                     <Form.Item
                         name="schedule"
                         label="Частота запуска"
@@ -145,6 +149,25 @@ const PipelineConfig: React.FC<PipelineConfigProps> = ({ selectedStorage, onConf
                         showIcon
                         style={{ marginTop: 16 }}
                     />
+                </Card>
+
+                <Card size="small" title={<><SettingOutlined /> Отказоустойчивость</>}>
+                    <Form.Item
+                        name="retries"
+                        label="Количество повторных попыток"
+                        help="Сколько раз задача будет перезапущена в случае сбоя."
+                    >
+                        <InputNumber min={0} max={10} style={{ width: '100%' }} />
+                    </Form.Item>
+
+                    <Form.Item
+                        name="emailOnFailure"
+                        valuePropName="checked"
+                        label="Отправлять email при сбое"
+                        help="Уведомить по электронной почте, если задача не будет выполнена."
+                    >
+                        <Switch />
+                    </Form.Item>
                 </Card>
             </Form>
         </div>
