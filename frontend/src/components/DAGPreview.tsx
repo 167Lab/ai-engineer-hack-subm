@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Typography, Alert, Button, Space, Tabs, message, Spin } from 'antd';
+import { Card, Typography, Alert, Button, Space, Tabs, message, Spin, Progress, Collapse } from 'antd';
 import { PlayCircleOutlined, CloudUploadOutlined, EyeOutlined } from '@ant-design/icons';
 import { useMutation } from '@tanstack/react-query';
 import { generateDag, deployDag } from '../services/api';
@@ -29,6 +29,8 @@ const DAGPreview: React.FC<DAGPreviewProps> = ({
 }) => {
     const [generatedDAG, setGeneratedDAG] = useState<DAGGenerationResult | null>(null);
     const [deployResult, setDeployResult] = useState<DAGDeploymentResult | null>(null);
+    const [graphNodes, setGraphNodes] = useState<string[]>([]);
+    const [deployProgress, setDeployProgress] = useState<number>(0);
 
     // Мутация для генерации DAG
     const generateMutation = useMutation<DAGGenerationResult, Error, any>({
@@ -96,7 +98,17 @@ const DAGPreview: React.FC<DAGPreviewProps> = ({
             owner: 'etl-system'
         };
 
-        deployMutation.mutate(deployConfig);
+        setDeployProgress(5);
+        const timer = setInterval(() => {
+            setDeployProgress((p) => Math.min(p + 7, 90));
+        }, 400);
+        deployMutation.mutate(deployConfig, {
+            onSettled: () => {
+                clearInterval(timer);
+                setDeployProgress(100);
+                setTimeout(() => setDeployProgress(0), 1500);
+            }
+        });
     };
 
     const renderConfigurationSummary = () => (
@@ -121,6 +133,14 @@ const DAGPreview: React.FC<DAGPreviewProps> = ({
                     <br />
                     <Text type="secondary">{pipelineConfig.description}</Text>
                 </div>
+
+                {generatedDAG && (
+                    <div>
+                        <Text strong>DAG ID:</Text> {generatedDAG.dag_id}
+                        <br />
+                        <Text strong>Файл:</Text> <Text type="secondary">{`/opt/airflow/dags/${generatedDAG.dag_id}.py`}</Text>
+                    </div>
+                )}
 
                 {analysisResult?.raw_response?.analysis_result?.llm_recommendations && (
                     <div>
@@ -155,128 +175,25 @@ const DAGPreview: React.FC<DAGPreviewProps> = ({
         );
     };
 
-    const renderDeploymentStatus = () => {
-        if (!deployResult) return null;
-
-        return (
-            <Card 
-                size="small" 
-                title="Статус развертывания"
-                style={{ marginTop: 16 }}
-            >
-                <Alert
-                    message={deployResult.status === 'deployed' ? 'Успешно развернуто!' : 'Ошибка развертывания'}
-                    description={deployResult.message}
-                    type={deployResult.status === 'deployed' ? 'success' : 'error'}
-                    showIcon
-                    style={{ marginBottom: 16 }}
-                />
-                
-                <Space direction="vertical" style={{ width: '100%' }}>
-                    <div>
-                        <Text strong>DAG ID:</Text> {deployResult.dag_id}
-                    </div>
-                    <div>
-                        <Text strong>Файл:</Text> {deployResult.file_path}
-                    </div>
-                    {deployResult.airflow_dag_url && (
-                        <div>
-                            <Text strong>Ссылка на схему DAG:</Text>{' '}
-                            <Button 
-                                type="link" 
-                                size="small" 
-                                onClick={() => window.open(deployResult.airflow_dag_url, '_blank')}
-                            >
-                                Открыть Graph View
-                            </Button>
-                        </div>
-                    )}
-                <div>
-                    <Text strong>Статус Airflow API:</Text> 
-                    <br />
-                    <Text type={/доступен|работает/i.test(deployResult.airflow_api_status || '') ? 'success' : 'warning'}>
-                        {deployResult.airflow_api_status || 'Статус неизвестен'}
-                    </Text>
-                </div>
-                </Space>
-
-                {deployResult.status === 'deployed' && (
-                    <div>
-                        <Alert
-                            message="Пайплайн готов к запуску!"
-                            description="DAG успешно развернут в Airflow."
-                            type="success"
-                            showIcon
-                            style={{ marginTop: 16 }}
-                            action={
-                                <Space>
-                                    <Button 
-                                        size="small" 
-                                        type="primary"
-                                        onClick={() => window.open('http://localhost:8080', '_blank')}
-                                    >
-                                        Открыть Airflow
-                                    </Button>
-                                    <Button 
-                                        size="small" 
-                                        onClick={() => window.open(`http://localhost:8080/dags/${deployResult.dag_id}/graph`, '_blank')}
-                                    >
-                                        Схема DAG
-                                    </Button>
-                                </Space>
-                            }
-                        />
-                        
-                        <Card size="small" title="Как использовать DAG" style={{ marginTop: 16 }}>
-                            <Space direction="vertical" style={{ width: '100%' }}>
-                                <div>
-                                    <Text strong>1. Откройте Airflow UI:</Text>
-                                    <br />
-                                    <Text>Перейдите по ссылке </Text>
-                                    <Text code copyable>http://localhost:8080</Text>
-                                </div>
-                                
-                                <div>
-                                    <Text strong>2. Найдите ваш DAG:</Text>
-                                    <br />
-                                    <Text>Ищите DAG с ID: </Text>
-                                    <Text code copyable>{deployResult.dag_id}</Text>
-                                </div>
-                                
-                                <div>
-                                    <Text strong>3. Включите DAG:</Text>
-                                    <br />
-                                    <Text>Переключите тумблер рядом с именем DAG в положение "ON"</Text>
-                                </div>
-                                
-                                <div>
-                                    <Text strong>4. Запустите вручную (опционально):</Text>
-                                    <br />
-                                    <Text>Нажмите кнопку "Trigger DAG" для немедленного запуска</Text>
-                                </div>
-                                
-                                <div>
-                                    <Text strong>5. Мониторинг:</Text>
-                                    <br />
-                                    <Text>Следите за выполнением в разделе "Graph View" или "Tree View"</Text>
-                                </div>
-                            </Space>
-                        </Card>
-                        
-                        {/недоступен|ошибка/i.test(deployResult.airflow_api_status || '') && (
-                            <Alert
-                                message="Обратите внимание"
-                                description="API Airflow недоступно, но DAG файл создан. Убедитесь, что Airflow запущен и обновите список DAG в интерфейсе."
-                                type="warning"
-                                showIcon
-                                style={{ marginTop: 16 }}
-                            />
-                        )}
-                    </div>
-                )}
-            </Card>
-        );
+    const parseDagGraph = () => {
+        if (!generatedDAG?.dag_py) {
+            setGraphNodes([]);
+            return;
+        }
+        const code = generatedDAG.dag_py;
+        const taskIdRegex = /task_id\s*=\s*['"]([^'"]+)['"]/g;
+        const ids = new Set<string>();
+        let m;
+        while ((m = taskIdRegex.exec(code))) {
+            ids.add(m[1]);
+        }
+        let nodes = Array.from(ids);
+        // Простая эвристика порядка
+        const order = ['extract_data', 'transform_data', 'load_data'];
+        nodes.sort((a,b) => order.indexOf(a) - order.indexOf(b));
+        setGraphNodes(nodes);
     };
+
 
     return (
         <div>
@@ -294,13 +211,14 @@ const DAGPreview: React.FC<DAGPreviewProps> = ({
                 <TabPane tab={<><EyeOutlined />Конфигурация</>} key="config">
                     {renderConfigurationSummary()}
                     
-                    <Space>
+                    <Space wrap>
                         <Button
                             type="primary"
                             icon={<PlayCircleOutlined />}
                             onClick={handleGenerateDAG}
                             loading={generateMutation.isPending}
                             size="large"
+                            aria-label="Сгенерировать DAG"
                         >
                             Сгенерировать DAG
                         </Button>
@@ -313,20 +231,77 @@ const DAGPreview: React.FC<DAGPreviewProps> = ({
                                 loading={deployMutation.isPending}
                                 style={{ backgroundColor: '#52c41a', borderColor: '#52c41a' }}
                                 size="large"
+                                aria-label="Развернуть в Airflow"
                             >
                                 Развернуть в Airflow
                             </Button>
                         )}
+
+                        {generatedDAG && (
+                            <Button onClick={() => window.open('http://localhost:8080', '_blank')}>
+                                Открыть Airflow
+                            </Button>
+                        )}
                     </Space>
+
+                    {deployMutation.isPending || deployProgress > 0 ? (
+                        <Card style={{ marginTop: 16 }} size="small">
+                            <Progress percent={deployProgress} status={deployProgress < 100 ? 'active' : 'success'} />
+                        </Card>
+                    ) : null}
+
+                    {deployResult?.status === 'deployed' && (
+                        <Collapse style={{ marginTop: 16 }}>
+                            <Collapse.Panel header="Как использовать DAG" key="howto">
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                    <div>
+                                        <Text>1. Откройте Airflow UI по кнопке «Открыть Airflow»</Text>
+                                    </div>
+                                    <div>
+                                        <Text>2. Найдите ваш DAG: </Text>
+                                        <Text code copyable>{deployResult.dag_id}</Text>
+                                    </div>
+                                    <div>
+                                        <Text>3. Переключите тумблер рядом с именем DAG в положение "ON"</Text>
+                                    </div>
+                                    <div>
+                                        <Text>4. При желании нажмите "Trigger DAG" для немедленного запуска</Text>
+                                    </div>
+                                    <div>
+                                        <Text>5. Следите за выполнением в «Graph View» или «Tree View»</Text>
+                                    </div>
+                                </Space>
+                            </Collapse.Panel>
+                        </Collapse>
+                    )}
                 </TabPane>
                 
                 <TabPane tab="Python код" key="code" disabled={!generatedDAG}>
                     {renderDAGCode()}
                 </TabPane>
-                
-                <TabPane tab="Статус" key="status" disabled={!deployResult}>
-                    {renderDeploymentStatus()}
+
+                <TabPane tab="Схема DAG" key="graph" disabled={!generatedDAG}>
+                    <Space direction="vertical" style={{ width: '100%' }}>
+                        <Button onClick={parseDagGraph} disabled={!generatedDAG}>Обновить схему</Button>
+                        {graphNodes.length > 0 ? (
+                            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                                {graphNodes.map((n, idx) => (
+                                    <div key={n} style={{
+                                        padding: '8px 12px',
+                                        border: '1px solid #d9d9d9',
+                                        borderRadius: 6,
+                                        background: idx === 0 ? '#e6f7ff' : (idx === graphNodes.length-1 ? '#f6ffed' : '#fff')
+                                    }}>
+                                        {n}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <Alert message="Схема будет доступна после генерации DAG" type="info" showIcon />
+                        )}
+                    </Space>
                 </TabPane>
+                
             </Tabs>
 
             {/* Индикаторы загрузки */}

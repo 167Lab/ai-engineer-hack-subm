@@ -4,7 +4,8 @@ from .views import (
     GetRecommendationsView, DeployDAGView,
     DeleteDAGCompleteView, CleanupOrphanedDAGsView,
     DAGHealthReportView, AnalyzeFileStreamView,
-    UploadChunkView, FinalizeChunkedUploadView, CleanupUploadView
+    UploadChunkView, FinalizeChunkedUploadView, CleanupUploadView,
+    ListFilesView, PreviewFileView, LoginView, AirflowBootstrapSessionView, AirflowProxyView, LogoutView
 )
 
 urlpatterns = [
@@ -23,4 +24,12 @@ urlpatterns = [
     path("upload_chunk", UploadChunkView.as_view(), name="upload_chunk"),
     path("finalize_chunked_upload", FinalizeChunkedUploadView.as_view(), name="finalize_chunked_upload"), 
     path("cleanup_upload", CleanupUploadView.as_view(), name="cleanup_upload"),
+    # File browsing and preview
+    path("list_files", ListFilesView.as_view(), name="list_files"),
+    path("preview", PreviewFileView.as_view(), name="preview"),
+    # Auth and Airflow SSO bootstrap
+    path("auth/login", LoginView.as_view(), name="auth_login"),
+    path("auth/logout", LogoutView.as_view(), name="auth_logout"),
+    path("airflow/bootstrap-session", AirflowBootstrapSessionView.as_view(), name="airflow_bootstrap_session"),
+    path("airflow/proxy/<path:subpath>", AirflowProxyView.as_view(), name="airflow_proxy"),
 ]

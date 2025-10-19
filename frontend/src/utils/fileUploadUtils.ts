@@ -47,7 +47,7 @@ export class LargeFileUploader {
         const chunks = this.createFileChunks(file);
         const uploadId = this.generateUploadId();
         
-        console.log(`🔄 Начинаем chunked upload: ${chunks.length} частей по ${this.CHUNK_SIZE / 1024 / 1024}MB`);
+        console.log(`Начинается потоковая загрузка: ${chunks.length} частей по ${this.CHUNK_SIZE / 1024 / 1024}MB`);
         
         try {
             // Загружаем чанки последовательно для контроля памяти

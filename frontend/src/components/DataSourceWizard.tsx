@@ -5,10 +5,11 @@ import { useMutation } from '@tanstack/react-query';
 import { analyzeDataSource } from '../services/api';
 import { SourceType, TargetType, AnalysisResult, MASAnalysisResult } from '../types';
 import AnalysisDisplay from './AnalysisDisplay';
-import StorageSelector from './StorageSelector';
-import PipelineConfig, { PipelineConfigData } from './PipelineConfig';
+import { PipelineConfigData } from './PipelineConfig';
+import StorageAndConfig from './StorageAndConfig';
 import DAGPreview from './DAGPreview';
 import { LargeFileUploader, MemorySafeFileReader } from '../utils/fileUploadUtils';
+import ServerFileBrowser from './ServerFileBrowser';
 
 const { Step } = Steps;
 const { Option } = Select;
@@ -38,7 +39,7 @@ const Step1Form = ({
         // Проверяем размер файла (увеличен лимит до 1 ГБ)
         const maxSize = 1024 * 1024 * 1024; // 1 ГБ
         if (file.size > maxSize) {
-            message.error(`Файл слишком большой! Максимальный размер: 1 ГБ. Размер вашего файла: ${(file.size / 1024 / 1024 / 1024).toFixed(1)} ГБ`);
+            message.error(`Файл слишком большой для загрузки. Максимальный размер: 1 ГБ. Размер вашего файла: ${(file.size / 1024 / 1024 / 1024).toFixed(1)} ГБ`);
             return false;
         }
 
@@ -51,7 +52,7 @@ const Step1Form = ({
             const detection = await MemorySafeFileReader.detectFileType(file);
             if (detection.confidence > 0.7) {
                 detectedType = detection.type as SourceType;
-                console.log(`🔍 Автоматически определен тип файла: ${detectedType} (уверенность: ${detection.confidence})`);
+                console.log(`Автоматически определен тип файла: ${detectedType} (уверенность: ${detection.confidence})`);
             }
         } catch (error) {
             console.warn('Не удалось определить тип файла:', error);
@@ -72,11 +73,11 @@ const Step1Form = ({
         // *** НОВАЯ ЛОГИКА: СРАЗУ НАЧИНАЕМ ЗАГРУЗКУ НА СЕРВЕР ***
         if (useChunkedUpload) {
             // Для больших файлов сразу начинаем chunked upload
-            message.info(`📤 Начинаем загрузку большого файла (${(file.size / 1024 / 1024).toFixed(1)} МБ) на сервер...`);
+            message.info(`Начинается потоковая загрузка большого файла (${(file.size / 1024 / 1024).toFixed(1)} МБ) на сервер...`);
             await startImmediateUpload(file, detectedType);
         } else {
             // Для маленьких файлов сразу начинаем streaming upload  
-            message.info(`📤 Загружаем файл (${(file.size / 1024).toFixed(1)} КБ) на сервер...`);
+            message.info(`Выполняется загрузка файла (${(file.size / 1024).toFixed(1)} КБ) на сервер...`);
             await startImmediateUpload(file, detectedType);
         }
 
@@ -166,7 +167,7 @@ const Step1Form = ({
                 ...prev,
                 status: 'complete',
                 percentage: 100,
-                message: 'Файл успешно загружен и проанализирован!'
+                message: 'Файл успешно загружен!'
             }));
 
             // Скрываем прогресс через 3 секунды
@@ -174,7 +175,7 @@ const Step1Form = ({
                 setUploadProgress((prev: any) => ({ ...prev, visible: false }));
             }, 3000);
 
-            message.success(`✅ Файл "${file.name}" успешно загружен и проанализирован!`);
+            message.success(`Файл "${file.name}" успешно загружен!`);
 
         } catch (error: any) {
             console.error('Ошибка немедленной загрузки:', error);
@@ -193,7 +194,7 @@ const Step1Form = ({
                 message: error.message || 'Ошибка загрузки файла'
             }));
 
-            message.error(`❌ Ошибка загрузки файла: ${error.message}`);
+            message.error(`Ошибка загрузки файла: ${error.message}`);
         }
     };
 
@@ -262,7 +263,7 @@ const Step1Form = ({
                             name="file_input_type"
                             label="Способ указания файла"
                         >
-                            <Radio.Group>
+                            <Radio.Group aria-label="Способ указания файла">
                                 <Radio value="path">
                                     <FolderOpenOutlined /> Путь к файлу на сервере
                                 </Radio>
@@ -273,14 +274,20 @@ const Step1Form = ({
                         </Form.Item>
 
                         {fileInputType === 'path' ? (
-                            <Form.Item
-                                name="file_path"
-                                label="Путь к файлу на сервере"
-                                rules={[{ required: true, message: 'Введите путь к файлу!' }]}
-                                help="Путь к файлу внутри Docker контейнера (например: /opt/airflow/data/test_frontend.csv)"
-                            >
-                                <Input placeholder="/opt/airflow/data/test_frontend.csv" />
-                            </Form.Item>
+                            <>
+                                <Form.Item
+                                    name="file_path"
+                                    label="Путь к файлу на сервере"
+                                    rules={[{ required: true, message: 'Выберите файл на сервере!' }]}
+                                    help="Выберите файл из каталога /opt/airflow/data/uploads"
+                                >
+                                    <Input placeholder="/opt/airflow/data/..." readOnly aria-label="Путь к файлу на сервере" />
+                                </Form.Item>
+                                <ServerFileBrowser
+                                    rootPath="/opt/airflow/data/uploads"
+                                    onSelectPath={(p) => form.setFieldsValue({ file_path: p })}
+                                />
+                            </>
                         ) : (
                             <Form.Item
                                 name="uploaded_file"
@@ -312,7 +319,7 @@ const Step1Form = ({
                                     className="upload-dragger"
                                     style={{ width: '100%' }}
                                 >
-                                    <Button icon={<UploadOutlined />}>
+                                    <Button icon={<UploadOutlined />} aria-label="Выбрать файл для загрузки">
                                         Выбрать {sourceType === SourceType.CSV ? 'CSV' : 
                                                  sourceType === SourceType.JSON ? 'JSON' : 
                                                  sourceType === SourceType.XML ? 'XML' : sourceType.toUpperCase()} файл
@@ -323,14 +330,14 @@ const Step1Form = ({
                                         <Alert
                                             message={
                                                 uploadedFile.isUploading ? 
-                                                `📤 Загружается: ${uploadedFile.name}` :
+                                                `Загружается: ${uploadedFile.name}` :
                                                 uploadedFile.uploadCompleted ? 
-                                                `✅ Загружен и проанализирован: ${uploadedFile.name}` :
-                                                `⏳ Выбран: ${uploadedFile.name}`
+                                                `Загружен: ${uploadedFile.name}` :
+                                                `Выбран: ${uploadedFile.name}`
                                             }
                                             description={`Размер: ${uploadedFile.size > 1024 * 1024 ? 
                                                 (uploadedFile.size / 1024 / 1024).toFixed(1) + ' МБ' : 
-                                                (uploadedFile.size / 1024).toFixed(1) + ' КБ'} | Тип: ${sourceType.toUpperCase()}${uploadedFile.useChunkedUpload ? ' | Chunked загрузка 🚀' : ''}${
+                                                (uploadedFile.size / 1024).toFixed(1) + ' КБ'} | Тип: ${sourceType.toUpperCase()}${uploadedFile.useChunkedUpload ? ' | Потоковая загрузка' : ''}${
                                                 uploadedFile.uploadCompleted ? ' | Готов к анализу!' : 
                                                 uploadedFile.isUploading ? ' | Идет загрузка...' : ' | Ожидает загрузки'
                                             }`}
@@ -346,6 +353,7 @@ const Step1Form = ({
                                                         size="small" 
                                                         danger 
                                                         onClick={() => cancelUpload()}
+                                                        aria-label="Отменить загрузку"
                                                     >
                                                         Отменить
                                                     </Button>
@@ -359,10 +367,10 @@ const Step1Form = ({
                                 {uploadProgress.visible && (
                                     <div style={{ marginTop: 12, padding: '12px', backgroundColor: '#f6ffed', borderRadius: '6px', border: '1px solid #b7eb8f' }}>
                                         <div style={{ marginBottom: '8px', fontWeight: 'bold', color: '#52c41a' }}>
-                                            {uploadProgress.status === 'uploading' && '📤 Загружаем файл по частям...'}
-                                            {uploadProgress.status === 'processing' && '⚙️ Анализируем данные...'}
-                                            {uploadProgress.status === 'complete' && '✅ Загрузка и анализ завершены!'}
-                                            {uploadProgress.status === 'error' && '❌ Ошибка загрузки'}
+                                            {uploadProgress.status === 'uploading' && 'Загружаем файл по частям...'}
+                                            {uploadProgress.status === 'processing' && 'Анализируем данные...'}
+                                            {uploadProgress.status === 'complete' && 'Загрузка завершена!'}
+                                            {uploadProgress.status === 'error' && 'Ошибка загрузки'}
                                         </div>
                                         
                                         <Progress 
@@ -377,41 +385,7 @@ const Step1Form = ({
                                         
                                         {uploadProgress.totalChunks > 1 && (
                                             <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
-                                                Чанк {uploadProgress.currentChunk} из {uploadProgress.totalChunks}
-                                            </div>
-                                        )}
-                                        
-                                        {uploadProgress.message && (
-                                            <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
-                                                {uploadProgress.message}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                                
-                                {/* Прогресс загрузки */}
-                                {uploadProgress.visible && (
-                                    <div style={{ marginTop: 12, padding: '12px', backgroundColor: '#f6ffed', borderRadius: '6px', border: '1px solid #b7eb8f' }}>
-                                        <div style={{ marginBottom: '8px', fontWeight: 'bold', color: '#52c41a' }}>
-                                            {uploadProgress.status === 'uploading' && '📤 Загружаем файл по частям...'}
-                                            {uploadProgress.status === 'processing' && '⚙️ Анализируем данные...'}
-                                            {uploadProgress.status === 'complete' && '✅ Загрузка и анализ завершены!'}
-                                            {uploadProgress.status === 'error' && '❌ Ошибка загрузки'}
-                                        </div>
-                                        
-                                        <Progress 
-                                            percent={uploadProgress.percentage} 
-                                            status={uploadProgress.status === 'error' ? 'exception' : 'active'}
-                                            strokeColor={{
-                                                '0%': '#87d068',
-                                                '100%': '#52c41a',
-                                            }}
-                                            format={(percent) => `${percent}%`}
-                                        />
-                                        
-                                        {uploadProgress.totalChunks > 1 && (
-                                            <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
-                                                Чанк {uploadProgress.currentChunk} из {uploadProgress.totalChunks}
+                                                Часть {uploadProgress.currentChunk} из {uploadProgress.totalChunks}
                                             </div>
                                         )}
                                         
@@ -431,8 +405,8 @@ const Step1Form = ({
                         </Form.Item>
                     </Space>
                 );
-            case SourceType.POSTGRES:
-            case SourceType.CLICKHOUSE:
+            //case SourceType.POSTGRES:
+            //case SourceType.CLICKHOUSE:
                 return (
                     <Form.Item
                         name="table"
@@ -462,18 +436,25 @@ const Step1Form = ({
                 label="Тип источника"
                 rules={[{ required: true, message: 'Пожалуйста, выберите тип источника!' }]}
             >
-                <Select placeholder="Выберите тип источника">
+                <Select placeholder="Выберите тип источника" aria-label="Тип источника данных">
                     {sourceTypes.map(type => (
                         <Option key={type} value={type}>{type.toUpperCase()}</Option>
                     ))}
                 </Select>
             </Form.Item>
+            <Alert
+                message="Подсказка"
+                description="Выберите тип источника и способ указания файла: загрузка локально или выбор пути на сервере. Для крупных файлов используется потоковая загрузка."
+                type="info"
+                showIcon
+                style={{ marginBottom: 12 }}
+            />
             {renderConnectionParams()}
         </>
     );
 };
 
-const DataSourceWizard: React.FC = () => {
+const DataSourceWizard: React.FC<{ resetSignal?: number }> = ({ resetSignal }) => {
     const [current, setCurrent] = useState(0);
     const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
     const [selectedStorage, setSelectedStorage] = useState<TargetType | undefined>(undefined);
@@ -497,6 +478,13 @@ const DataSourceWizard: React.FC = () => {
     });
     const [uploadedFile, setUploadedFile] = useState<any>(null);
 
+    // Reset to first step when resetSignal changes
+    React.useEffect(() => {
+        if (typeof resetSignal === 'number') {
+            setCurrent(0);
+        }
+    }, [resetSignal]);
+
     const analysisMutation = useMutation<MASAnalysisResult, Error, any>({
         mutationFn: analyzeDataSource,
         onSuccess: (data) => {
@@ -513,7 +501,7 @@ const DataSourceWizard: React.FC = () => {
                 raw_response: data
             };
             setAnalysisResult(processedResult);
-            setCurrent(current + 1);
+            setCurrent(prev => prev + 1);
         },
         onError: (error: Error) => {
             message.error(`Ошибка при анализе: ${error.message}`);
@@ -526,14 +514,14 @@ const DataSourceWizard: React.FC = () => {
         if (current === 0) {
             form.submit();
         } else if (canGoToNextStep()) {
-            setCurrent(current + 1);
+            setCurrent(prev => prev + 1);
         } else {
             message.warning('Пожалуйста, завершите текущий шаг перед переходом к следующему');
         }
     };
 
     const handlePrev = () => {
-        setCurrent(current - 1);
+        setCurrent(prev => prev - 1);
     };
 
     const onFormFinish = async (values: any) => {
@@ -541,7 +529,7 @@ const DataSourceWizard: React.FC = () => {
 
         // *** НОВАЯ ЛОГИКА: Проверяем если файл уже загружен и проанализирован ***
         if (file_input_type === 'upload' && uploadedFile && uploadedFile.uploadCompleted && uploadedFile.analysisResult) {
-            console.log('✅ Файл уже загружен и проанализирован, используем готовый результат');
+            console.log('Файл уже загружен, переходим к следующему шагу');
             
             // Файл уже на сервере и проанализирован, переходим к следующему шагу
             setAnalysisResult(uploadedFile.analysisResult);
@@ -552,21 +540,20 @@ const DataSourceWizard: React.FC = () => {
                     is_uploaded: true,
                     server_processed: true
                 }
-            };
-            setSourceConfig(payload);
-            analysisMutation.mutate(payload);
+            });
+            setCurrent(prev => prev + 1);
             return;
         }
 
         // Если загрузка еще не завершена, блокируем переход
         if (file_input_type === 'upload' && uploadedFile && uploadedFile.isUploading) {
-            message.warning('⏳ Дождитесь завершения загрузки файла на сервер');
+            message.warning('Дождитесь завершения загрузки файла на сервер');
             return;
         }
 
         // Если выбран файл но он еще не загружен, запускаем загрузку
         if (file_input_type === 'upload' && uploadedFile && !uploadedFile.uploadCompleted) {
-            message.warning('⏳ Файл выбран но еще не загружен. Попробуйте выбрать файл снова.');
+            message.warning('Файл выбран но еще не загружен. Попробуйте выбрать файл снова.');
             return;
         }
 
@@ -580,7 +567,7 @@ const DataSourceWizard: React.FC = () => {
                     // Для локальной загрузки полагаемся на состояние uploadedFile,
                     // файл уже загружен сервером в шаге немедленной загрузки
                     if (!uploadedFile || !uploadedFile.uploadCompleted) {
-                        message.warning('⏳ Файл еще не загружен на сервер. Дождитесь завершения загрузки.');
+                        message.warning('Файл еще не загружен на сервер. Дождитесь завершения загрузки.');
                         return;
                     }
                     connection_params = {
@@ -596,8 +583,8 @@ const DataSourceWizard: React.FC = () => {
                     };
                 }
                 break;
-            case SourceType.POSTGRES:
-            case SourceType.CLICKHOUSE:
+            //case SourceType.POSTGRES:
+            //case SourceType.CLICKHOUSE:
                 connection_params = { table };
                 break;
         }
@@ -611,6 +598,8 @@ const DataSourceWizard: React.FC = () => {
         
         // Сохраняем конфигурацию источника для дальнейшего использования
         setSourceConfig(payload);
+        // Переходим сразу к шагу анализа и показываем индикатор, пока идет анализ
+        setCurrent(prev => prev + 1);
         analysisMutation.mutate(payload);
     };
 
@@ -641,9 +630,8 @@ const DataSourceWizard: React.FC = () => {
                 }
             }
             case 1: return !!analysisResult; // должны быть результаты анализа
-            case 2: return !!selectedStorage; // должно быть выбрано хранилище
-            case 3: return !!pipelineConfig; // должна быть конфигурация пайплайна
-            case 4: return true; // финальный шаг
+            case 2: return !!selectedStorage && !!pipelineConfig; // объединенный шаг
+            case 3: return true; // финальный шаг
             default: return false;
         }
     };
@@ -664,31 +652,30 @@ const DataSourceWizard: React.FC = () => {
             title: 'Анализ данных',
             content: (
                 <div style={{ maxHeight: '500px', overflowY: 'auto', paddingRight: '16px' }}>
-                    {analysisMutation.isPending ? <p>Идет анализ...</p> : <AnalysisDisplay analysisResult={analysisResult} />}
+                    {analysisMutation.isPending ? (
+                        <Card size="small">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <Progress percent={70} status="active" style={{ flex: 1 }} />
+                                <span>Анализ данных...</span>
+                            </div>
+                        </Card>
+                    ) : (
+                        <AnalysisDisplay analysisResult={analysisResult} />
+                    )}
                 </div>
             ),
         },
         {
-            title: 'Выбор хранилища',
+            title: 'Хранилище и конфигурация',
             content: analysisResult ? (
-                <StorageSelector 
+                <StorageAndConfig
                     recommendations={analysisResult.recommendations}
                     selectedStorage={selectedStorage}
                     onStorageSelect={handleStorageSelect}
-                />
-            ) : (
-                <p>Сначала завершите анализ данных</p>
-            ),
-        },
-        {
-            title: 'Настройка пайплайна',
-            content: selectedStorage ? (
-                <PipelineConfig 
-                    selectedStorage={selectedStorage}
                     onConfigChange={handlePipelineConfigChange}
                 />
             ) : (
-                <p>Сначала выберите хранилище</p>
+                <p>Сначала завершите анализ данных</p>
             ),
         },
         {
@@ -721,7 +708,7 @@ const DataSourceWizard: React.FC = () => {
             </div>
             <div className="steps-action" style={{ marginTop: 24 }}>
                 {current > 0 && (
-                    <Button style={{ margin: '0 8px' }} onClick={handlePrev}>
+                    <Button style={{ margin: '0 8px' }} onClick={handlePrev} aria-label="Назад">
                         Назад
                     </Button>
                 )}
@@ -734,6 +721,7 @@ const DataSourceWizard: React.FC = () => {
                             (current === 0 && uploadedFile && uploadedFile.isUploading)
                         }
                         disabled={!canGoToNextStep()}
+                        aria-label="Далее"
                     >
                         {current === 0 && uploadedFile && uploadedFile.isUploading ? 'Загружается файл...' : 'Далее'}
                     </Button>

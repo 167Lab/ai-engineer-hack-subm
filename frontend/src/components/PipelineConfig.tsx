@@ -1,5 +1,5 @@
 import React from 'react';
-import { Form, Input, Select, Card, Typography, Space, Alert } from 'antd';
+import { Form, Input, Select, Card, Typography, Alert } from 'antd';
 import { ClockCircleOutlined, SettingOutlined } from '@ant-design/icons';
 import { TargetType } from '../types';
 
@@ -124,15 +124,15 @@ const PipelineConfig: React.FC<PipelineConfigProps> = ({ selectedStorage, onConf
                         label="Частота запуска"
                         rules={[{ required: true, message: 'Выберите расписание!' }]}
                     >
-                        <Select placeholder="Выберите расписание">
+                        <Select placeholder="Выберите расписание" dropdownMatchSelectWidth={480}>
                             {scheduleOptions.map(option => (
                                 <Option key={option.value} value={option.value}>
-                                    <Space direction="vertical" size={1}>
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
                                         <Text strong>{option.label}</Text>
-                                        <Text type="secondary" style={{ fontSize: '12px' }}>
+                                        <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
                                             {option.description}
                                         </Text>
-                                    </Space>
+                                    </span>
                                 </Option>
                             ))}
                         </Select>

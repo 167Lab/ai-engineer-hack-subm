@@ -1,7 +1,9 @@
 import React from 'react';
-import { Descriptions, Tag, Progress, Card, Alert } from 'antd';
-import { CheckCircleOutlined } from '@ant-design/icons';
+import { Descriptions, Tag, Progress, Card, Alert, Table, Typography } from 'antd';
 import { AnalysisResult } from '../types';
+import { previewFile } from '../services/api';
+
+const { Text } = Typography;
 
 interface AnalysisDisplayProps {
     analysisResult: AnalysisResult | null;
@@ -12,7 +14,7 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ analysisResult }) => 
         return <Alert message="Нет данных для отображения." type="info" />;
     }
 
-    const { row_count, column_count, columns, data_quality, recommendations, error, raw_response } = analysisResult;
+    const { row_count, column_count, columns, data_quality, error, raw_response } = analysisResult;
 
     if (error) {
         return <Alert message={`Ошибка анализа: ${error}`} type="error" />;
@@ -50,6 +52,23 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ analysisResult }) => 
         return <Alert message="Анализ не вернул детальных результатов. Проверьте параметры источника." type="warning" />;
     }
 
+    const [preview, setPreview] = React.useState<{ columns: string[]; rows: any[] } | null>(null);
+    const [loadingPreview, setLoadingPreview] = React.useState(false);
+
+    React.useEffect(() => {
+        // авто-предпросмотр, если есть путь к файлу и тип
+        const filePath = analysisResult?.raw_response?.file_info?.persisted_path;
+        const sourceType = analysisResult?.raw_response?.file_info?.source_type;
+        if (filePath && sourceType) {
+            setLoadingPreview(true);
+            previewFile({ path: filePath, type: sourceType as any, rows: 50 })
+                .then(setPreview)
+                .finally(() => setLoadingPreview(false));
+        } else {
+            setPreview(null);
+        }
+    }, [analysisResult?.raw_response?.file_info?.persisted_path, analysisResult?.raw_response?.file_info?.source_type]);
+
     return (
         <Card title="Результаты анализа источника данных">
             <Descriptions bordered column={2} size="small">
@@ -69,52 +88,48 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ analysisResult }) => 
                         </div>
                     </Descriptions.Item>
                 )}
-
-                <Descriptions.Item label="Рекомендации по хранилищу" span={2}>
-                    {recommendations && recommendations.length > 0 ? (
-                        recommendations.map((rec: any, idx: number) => (
-                            <div key={idx} style={{ marginBottom: 8 }}>
-                                <Tag icon={<CheckCircleOutlined />} color="success">
-                                    {rec.storage_type || rec.primary_storage}
-                                </Tag>
-                                <span>{rec.reasoning}</span>
-                                {rec.confidence && (
-                                    <span style={{ marginLeft: 8, color: '#666' }}>
-                                        (Уверенность: {Math.round(rec.confidence * 100)}%)
-                                    </span>
-                                )}
-                            </div>
-                        ))
-                    ) : (
-                        <span style={{ color: '#999' }}>Рекомендации не сгенерированы</span>
-                    )}
-                </Descriptions.Item>
             </Descriptions>
 
-            <h4 style={{ marginTop: 24 }}>Анализ колонок:</h4>
-            {columns && Object.entries(columns).map(([colName, cd]: [string, any]) => {
-                // Support two shapes: ColumnDetails or simple dtype string
-                const isSimple = typeof cd === 'string';
-                const dtype = isSimple ? cd : cd.dtype;
-                const nullCount = isSimple ? (data_quality?.null_counts?.[colName] ?? 0) : (cd.null_count ?? 0);
-                const perc = row_count ? (nullCount / row_count * 100) : 0;
-                const uniqueCount = isSimple ? '-' : (cd.unique_count ?? '-');
-                const samples: string[] = isSimple ? [] : (cd.sample_values ?? []);
-                return (
-                    <Card key={colName} size="small" title={colName} style={{ marginBottom: 16 }}>
-                        <Descriptions column={1} size="small">
-                            <Descriptions.Item label="Тип данных"><Tag>{dtype}</Tag></Descriptions.Item>
-                            <Descriptions.Item label="Пропущено">{`${nullCount} (${perc.toFixed(2)}%)`}</Descriptions.Item>
-                            <Descriptions.Item label="Уникальных значений">{uniqueCount}</Descriptions.Item>
-                            {!!samples.length && (
-                                <Descriptions.Item label="Примеры значений">
-                                    {samples.map((val: string, i: number) => <Tag key={i} color="blue">{val}</Tag>)}
-                                </Descriptions.Item>
-                            )}
-                        </Descriptions>
-                    </Card>
-                );
-            })}
+            <h4 style={{ marginTop: 24 }}>Анализ колонок</h4>
+            <Table
+                size="small"
+                pagination={false}
+                dataSource={Object.entries(columns || {}).map(([colName, cd]: [string, any]) => {
+                    const isSimple = typeof cd === 'string';
+                    const dtype = isSimple ? cd : cd.dtype;
+                    const nullCount = isSimple ? (data_quality?.null_counts?.[colName] ?? 0) : (cd.null_count ?? 0);
+                    const perc = row_count ? (nullCount / row_count * 100) : 0;
+                    const uniqueCount = isSimple ? '-' : (cd.unique_count ?? '-');
+                    return { key: colName, dtype, nulls: `${nullCount} (${perc.toFixed(2)}%)`, unique: uniqueCount };
+                })}
+                columns={[
+                    { title: 'Тип данных', dataIndex: 'dtype', key: 'dtype', render: (v) => <Tag>{v}</Tag> },
+                    { title: 'Пропущено', dataIndex: 'nulls', key: 'nulls' },
+                    { title: 'Уникальных значений', dataIndex: 'unique', key: 'unique' },
+                ]}
+            />
+
+            <h4 style={{ marginTop: 24 }}>Предпросмотр данных (первые 50 строк):</h4>
+            {!preview && (
+                <Text type="secondary">Предпросмотр появится после загрузки/анализа файла на сервере</Text>
+            )}
+            {preview && (
+                <div style={{ border: '1px solid #f0f0f0', borderRadius: 6, overflow: 'hidden' }}>
+                    <Table
+                        size="small"
+                        pagination={{ pageSize: 50, hideOnSinglePage: true }}
+                        loading={loadingPreview}
+                        scroll={{ y: 300, x: true }}
+                        columns={(preview.columns.length ? preview.columns : Object.keys(preview.rows[0] || {})).map((c) => ({
+                            title: c,
+                            dataIndex: c,
+                            key: c,
+                            render: (val: any) => <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{String(val ?? '')}</span>
+                        }))}
+                        dataSource={preview.rows.map((r, i) => ({ key: String(i), ...r }))}
+                    />
+                </div>
+            )}
         </Card>
     );
 };

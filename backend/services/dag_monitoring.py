@@ -70,7 +70,7 @@ class DAGMonitoringService:
         operation_id = f"{operation_type}_{int(time.time() * 1000)}"
         
         self.logger.info(
-            f"🚀 START [{operation_type}] dag_id={dag_id}, operation_id={operation_id}"
+            f"START [{operation_type}] dag_id={dag_id}, operation_id={operation_id}"
         )
         
         return operation_id
@@ -131,7 +131,7 @@ class DAGMonitoringService:
     def _send_critical_alert(self, metric: DAGOperationMetrics):
         """Отправка критических алертов"""
         alert_message = (
-            f"🚨 CRITICAL: DAG operation failed\n"
+            f"CRITICAL: DAG operation failed\n"
             f"Operation: {metric.operation_type}\n"
             f"DAG ID: {metric.dag_id}\n"
             f"Error: {metric.error_message}\n"

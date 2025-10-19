@@ -2,10 +2,10 @@ export enum SourceType {
     CSV = "csv",
     JSON = "json",
     XML = "xml",
-    POSTGRES = "postgres",
-    CLICKHOUSE = "clickhouse",
-    KAFKA = "kafka",
-    HDFS = "hdfs",
+    //POSTGRES = "postgres",
+    //CLICKHOUSE = "clickhouse",
+    //KAFKA = "kafka",
+    //HDFS = "hdfs",
 }
 
 export enum TargetType {
@@ -56,6 +56,14 @@ export interface MASAnalysisResult {
         data_quality?: DataQuality;
         recommendations?: any[];
         llm_recommendations?: any;
+    };
+    file_info?: {
+        name?: string;
+        size?: number;
+        processed_size?: number;
+        source_type?: string;
+        sample_size?: number;
+        persisted_path?: string;
     };
     error?: string;
 }
