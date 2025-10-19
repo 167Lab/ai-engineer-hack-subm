@@ -190,10 +190,10 @@ class AgentExecutor:
             return updated_state
             
         except Exception as e:
-            logger.error(f"Ошибка выполнения агента {self.agent_name}: {e}")
+            logger.error(f"Ошибка выполнения агента {self.agent_name}: {e}", exc_info=True)
             
-            # Добавляем ошибку в состояние
-            if 'errors' not in state:
+            # Добавляем ошибку в состояние, убедившись что это список
+            if not isinstance(state.get('errors'), list):
                 state['errors'] = []
             
             state['errors'].append({
