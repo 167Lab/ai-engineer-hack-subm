@@ -35,7 +35,7 @@ const Step1Form = ({
     const sourceType = Form.useWatch('source_type', form);
     const fileInputType = Form.useWatch('file_input_type', form) || 'path';
 
-    const handleFileUpload = async (file: any) => {
+    const handleFileUpload = async (file: File) => {
         // Проверяем размер файла (увеличен лимит до 1 ГБ)
         const maxSize = 1024 * 1024 * 1024; // 1 ГБ
         if (file.size > maxSize) {
@@ -85,7 +85,7 @@ const Step1Form = ({
     };
 
     // Новая функция для немедленной загрузки файла на сервер
-    const startImmediateUpload = async (file: any, detectedType: string) => {
+    const startImmediateUpload = async (file: File, detectedType: string) => {
         try {
             // Обновляем состояние - начинаем загрузку
             setUploadedFile((prev: any) => prev ? {...prev, isUploading: true} : null);
@@ -285,7 +285,7 @@ const Step1Form = ({
                                 </Form.Item>
                                 <ServerFileBrowser
                                     rootPath="/opt/airflow/data/uploads"
-                                    onSelectPath={(p) => form.setFieldsValue({ file_path: p })}
+                                    onSelectPath={(p: string) => form.setFieldsValue({ file_path: p })}
                                 />
                             </>
                         ) : (
@@ -380,7 +380,7 @@ const Step1Form = ({
                                                 '0%': '#87d068',
                                                 '100%': '#52c41a',
                                             }}
-                                            format={(percent) => `${percent}%`}
+                                            format={(percent?: number) => `${percent ?? 0}%`}
                                         />
                                         
                                         {uploadProgress.totalChunks > 1 && (
@@ -454,7 +454,7 @@ const Step1Form = ({
     );
 };
 
-const DataSourceWizard: React.FC<{ resetSignal?: number }> = ({ resetSignal }) => {
+const DataSourceWizard: React.FC<{ resetSignal?: number }> = ({ resetSignal }: { resetSignal?: number }) => {
     const [current, setCurrent] = useState(0);
     const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
     const [selectedStorage, setSelectedStorage] = useState<TargetType | undefined>(undefined);
@@ -487,7 +487,7 @@ const DataSourceWizard: React.FC<{ resetSignal?: number }> = ({ resetSignal }) =
 
     const analysisMutation = useMutation<MASAnalysisResult, Error, any>({
         mutationFn: analyzeDataSource,
-        onSuccess: (data) => {
+        onSuccess: (data: MASAnalysisResult) => {
             message.success('Анализ успешно завершен!');
             // Преобразуем MAS результат в удобный формат
             const processedResult: AnalysisResult = {
@@ -501,7 +501,7 @@ const DataSourceWizard: React.FC<{ resetSignal?: number }> = ({ resetSignal }) =
                 raw_response: data
             };
             setAnalysisResult(processedResult);
-            setCurrent(prev => prev + 1);
+            setCurrent((prev: number) => prev + 1);
         },
         onError: (error: Error) => {
             message.error(`Ошибка при анализе: ${error.message}`);
@@ -514,35 +514,23 @@ const DataSourceWizard: React.FC<{ resetSignal?: number }> = ({ resetSignal }) =
         if (current === 0) {
             form.submit();
         } else if (canGoToNextStep()) {
-            setCurrent(prev => prev + 1);
+            setCurrent((prev: number) => prev + 1);
         } else {
             message.warning('Пожалуйста, завершите текущий шаг перед переходом к следующему');
         }
     };
 
     const handlePrev = () => {
-        setCurrent(prev => prev - 1);
+        setCurrent((prev: number) => prev - 1);
     };
 
     const onFormFinish = async (values: any) => {
         const { source_type, file_path, table, file_input_type } = values;
 
-        // *** НОВАЯ ЛОГИКА: Проверяем если файл уже загружен и проанализирован ***
+        // Если файл уже загружен и есть быстрый предпросмотр (streaming анализ),
+        // используем его для UI, но всё равно запускаем LLM-анализ на бэкенде ниже.
         if (file_input_type === 'upload' && uploadedFile && uploadedFile.uploadCompleted && uploadedFile.analysisResult) {
-            console.log('Файл уже загружен, переходим к следующему шагу');
-            
-            // Файл уже на сервере и проанализирован, переходим к следующему шагу
             setAnalysisResult(uploadedFile.analysisResult);
-            setSourceConfig({
-                source_type,
-                connection_params: {
-                    file_name: uploadedFile.name,
-                    is_uploaded: true,
-                    server_processed: true
-                }
-            });
-            setCurrent(prev => prev + 1);
-            return;
         }
 
         // Если загрузка еще не завершена, блокируем переход
@@ -599,7 +587,7 @@ const DataSourceWizard: React.FC<{ resetSignal?: number }> = ({ resetSignal }) =
         // Сохраняем конфигурацию источника для дальнейшего использования
         setSourceConfig(payload);
         // Переходим сразу к шагу анализа и показываем индикатор, пока идет анализ
-        setCurrent(prev => prev + 1);
+        setCurrent((prev: number) => prev + 1);
         analysisMutation.mutate(payload);
     };
 

@@ -168,12 +168,14 @@ class AgentExecutor:
         
         try:
             # Вызов LLM
+            logger.info(f"Запуск LLM: agent={self.agent_name} exec={state.get('execution_id')}")
             response = self.llm_manager.invoke_with_retry(
                 self.llm,
                 messages,
                 agent_type=self.agent_name,
                 execution_id=state.get('execution_id')
             )
+            logger.info(f"LLM завершен: agent={self.agent_name} exec={state.get('execution_id')}")
             
             # Логирование ответа
             self._log_response(response, state)

@@ -141,9 +141,13 @@ class LLMIntegration:
         Последовательный запуск этапов: анализ -> DDL -> пайплайн -> отчет
         """
         state = initial_state
+        logger.info(f"Этап input_analysis старт: exec={state.get('execution_id')}")
         state = self.input_analyzer.execute(state)
+        logger.info(f"Этап ddl_generation старт: exec={state.get('execution_id')}")
         state = self.ddl_generator.execute(state)
+        logger.info(f"Этап pipeline_generation старт: exec={state.get('execution_id')}")
         state = self.pipeline_generator.execute(state)
+        logger.info(f"Этап report_generation старт: exec={state.get('execution_id')}")
         state = self.report_generator.execute(state)
         return state
     

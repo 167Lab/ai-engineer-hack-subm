@@ -5,7 +5,8 @@ from .views import (
     DeleteDAGCompleteView, CleanupOrphanedDAGsView,
     DAGHealthReportView, AnalyzeFileStreamView,
     UploadChunkView, FinalizeChunkedUploadView, CleanupUploadView,
-    ListFilesView, PreviewFileView, LoginView, AirflowBootstrapSessionView, AirflowProxyView, LogoutView
+    ListFilesView, PreviewFileView, LoginView, AirflowBootstrapSessionView, AirflowProxyView, LogoutView,
+    LLMHealthView
 )
 
 urlpatterns = [
@@ -32,4 +33,6 @@ urlpatterns = [
     path("auth/logout", LogoutView.as_view(), name="auth_logout"),
     path("airflow/bootstrap-session", AirflowBootstrapSessionView.as_view(), name="airflow_bootstrap_session"),
     path("airflow/proxy/<path:subpath>", AirflowProxyView.as_view(), name="airflow_proxy"),
+    # LLM health
+    path("llm/health", LLMHealthView.as_view(), name="llm_health"),
 ]

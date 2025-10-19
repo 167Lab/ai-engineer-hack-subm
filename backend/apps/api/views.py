@@ -30,6 +30,17 @@ class AnalyzeDataSourceView(APIView):
                 'status': 'failed'
             }, status=400)
 
+class LLMHealthView(APIView):
+    """Проверка доступности Ollama и модели с бэкенда"""
+    def get(self, request):
+        try:
+            mgr = LLMIntegration().llm_manager
+            reach = mgr.is_ollama_reachable()
+            info = mgr.get_model_info('input_analysis')
+            return Response({ 'reachable': reach.get('reachable', False), 'probe': reach, 'model': info })
+        except Exception as e:
+            return Response({ 'reachable': False, 'error': str(e) }, status=500)
+
 # /api/v1/analyze_file_stream
 class AnalyzeFileStreamView(APIView):
     """

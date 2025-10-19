@@ -10,6 +10,8 @@ import yaml
 from pathlib import Path
 from datetime import datetime
 from langchain_ollama import ChatOllama
+import urllib.request
+import json
 
 logger = logging.getLogger("agents.llm")
 
@@ -31,6 +33,8 @@ class LLMManager:
         # Всегда используем Ollama
         self.provider = 'ollama'
         self.models_cache: Dict[str, BaseChatModel] = {}
+        # Строгий режим: при недоступности Ollama не использовать заглушки
+        self.strict_ollama: bool = bool(self.llm_config.get('strict_ollama', False))
         
     def _load_config(self, config_path: Optional[str] = None) -> Dict[str, Any]:
         """Загрузка конфигурации из файла"""
@@ -87,6 +91,8 @@ class LLMManager:
         
         if not llm:
             logger.error(f"Не удалось инициализировать LLM для агента {agent_type}")
+            if self.strict_ollama:
+                raise RuntimeError("Ollama недоступна или модель не инициализирована (strict_ollama=true)")
             llm = self._get_fallback_llm(agent_type)
         
         if llm and use_tools:
@@ -107,12 +113,17 @@ class LLMManager:
         
         try:
             model_name = ollama_config['models'].get(agent_type, 'llama3.2:latest')
-            
+            base_url = ollama_config.get('url', 'http://localhost:11434')
+            temperature = ollama_config.get('temperature', 0.7)
+            num_predict = ollama_config.get('max_tokens', 4096)
+
+            logger.info(f"Инициализация ChatOllama: model={model_name}, base_url={base_url}, enabled={ollama_config.get('enabled', False)}")
+
             llm = ChatOllama(
                 model=model_name,
-                base_url=ollama_config.get('url', 'http://localhost:11434'),
-                temperature=ollama_config.get('temperature', 0.7),
-                num_predict=ollama_config.get('max_tokens', 4096),
+                base_url=base_url,
+                temperature=temperature,
+                num_predict=num_predict,
             )
             
             # Проверка доступности модели
@@ -122,6 +133,8 @@ class LLMManager:
             
         except Exception as e:
             logger.warning(f"Не удалось инициализировать модель для {agent_type}: {e}")
+            if self.strict_ollama:
+                raise
             return None
     
     # Удалены облачные провайдеры — используется только Ollama
@@ -165,10 +178,12 @@ class LLMManager:
         
         for attempt in range(retry_count):
             try:
+                logger.info(f"LLM invoke start: agent={agent_type} exec={execution_id} attempt={attempt+1}/{retry_count}")
                 # Локальный аудит входов/выходов по файлам
                 self._audit_io(messages, agent_type, execution_id, phase=f"attempt_{attempt+1}_request")
                 response = llm.invoke(messages)
                 self._audit_io(response, agent_type, execution_id, phase=f"attempt_{attempt+1}_response")
+                logger.info(f"LLM invoke success: agent={agent_type} exec={execution_id} attempt={attempt+1}")
                 return response
             except Exception as e:
                 last_error = e
@@ -184,7 +199,10 @@ class LLMManager:
             day_dir = datetime.now().strftime('%Y-%m-%d')
             exec_id = execution_id or 'unknown'
             name = agent_type or 'unknown'
-            logs_dir = base_dir / 'logs' / day_dir / exec_id / name
+            # Разрешаем переопределение директории логов через переменную окружения
+            env_logs_root = os.environ.get('AGENTS_LOG_DIR')
+            logs_root = Path(env_logs_root) if env_logs_root else (base_dir / 'logs')
+            logs_dir = logs_root / day_dir / exec_id / name
             logs_dir.mkdir(parents=True, exist_ok=True)
             stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             file_path = logs_dir / f"{phase}.txt"
@@ -220,3 +238,17 @@ class LLMManager:
             'temperature': config.get('temperature', 0.75),
             'max_tokens': config.get('max_tokens', 4096)
         }
+
+    def is_ollama_reachable(self) -> Dict[str, Any]:
+        """
+        Проверка доступности Ollama через /api/tags
+        """
+        try:
+            ollama_cfg = self.llm_config.get('ollama', {})
+            base_url = ollama_cfg.get('url', 'http://localhost:11434')
+            url = base_url.rstrip('/') + '/api/tags'
+            with urllib.request.urlopen(url, timeout=float(ollama_cfg.get('timeout', 30))) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+            return { 'reachable': True, 'base_url': base_url, 'tags_count': len(data.get('models', [])) }
+        except Exception as e:
+            return { 'reachable': False, 'error': str(e) }
