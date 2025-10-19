@@ -6,7 +6,7 @@ from .views import (
     DAGHealthReportView, AnalyzeFileStreamView,
     UploadChunkView, FinalizeChunkedUploadView, CleanupUploadView,
     ListFilesView, PreviewFileView, LoginView, AirflowBootstrapSessionView, AirflowProxyView, LogoutView,
-    LLMHealthView
+    LLMHealthView, GeneratePipelineView, GenerateReportView
 )
 
 urlpatterns = [
@@ -35,4 +35,8 @@ urlpatterns = [
     path("airflow/proxy/<path:subpath>", AirflowProxyView.as_view(), name="airflow_proxy"),
     # LLM health
     path("llm/health", LLMHealthView.as_view(), name="llm_health"),
+    
+    # Staged pipeline generation
+    path("generate_pipeline", GeneratePipelineView.as_view(), name="generate_pipeline"),
+    path("generate_report", GenerateReportView.as_view(), name="generate_report"),
 ]

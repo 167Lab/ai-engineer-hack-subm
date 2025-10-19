@@ -127,6 +127,8 @@ class LLMIntegration:
             source_config=request_data,
             source_type=request_data.get('source_type'),
             connection_params=request_data.get('connection_params', {}),
+            data_sample=request_data.get('data_sample', []),
+            source_metadata=request_data.get('source_metadata', {}),
             execution_id=str(uuid.uuid4()),
             start_time=datetime.now().isoformat(),
             completed_agents=[],
@@ -139,17 +141,171 @@ class LLMIntegration:
     async def _run_sequential(self, initial_state: MASState) -> MASState:
         """
         Последовательный запуск этапов: анализ -> DDL -> пайплайн -> отчет
+        DEPRECATED: Используется только для обратной совместимости
         """
         state = initial_state
-        logger.info(f"Этап input_analysis старт: exec={state.get('execution_id')}")
+        logger.info(f"🚀 Starting sequential pipeline, exec={state.get('execution_id')}")
+        
+        logger.info(f"🔸 Stage 1/4: input_analysis starting...")
         state = self.input_analyzer.execute(state)
-        logger.info(f"Этап ddl_generation старт: exec={state.get('execution_id')}")
+        logger.info(f"🔸 Stage 1/4: input_analysis complete")
+        
+        logger.info(f"🔸 Stage 2/4: ddl_generation starting...")
         state = self.ddl_generator.execute(state)
-        logger.info(f"Этап pipeline_generation старт: exec={state.get('execution_id')}")
+        logger.info(f"🔸 Stage 2/4: ddl_generation complete")
+        
+        logger.info(f"🔸 Stage 3/4: pipeline_generation starting...")
         state = self.pipeline_generator.execute(state)
-        logger.info(f"Этап report_generation старт: exec={state.get('execution_id')}")
+        logger.info(f"🔸 Stage 3/4: pipeline_generation complete")
+        
+        logger.info(f"🔸 Stage 4/4: report_generation starting...")
         state = self.report_generator.execute(state)
+        logger.info(f"🔸 Stage 4/4: report_generation complete")
+        
+        logger.info(f"🚀 Sequential pipeline complete, exec={state.get('execution_id')}")
         return state
+    
+    async def run_input_analysis(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Запуск только анализа входных данных (Stage 1)
+        Возвращает рекомендации по хранилищу
+        """
+        try:
+            logger.info(f"🎯 Starting input analysis only")
+            
+            # Создаем начальное состояние
+            state = self._create_initial_state(request_data)
+            
+            # Запускаем только input_analysis
+            logger.info(f"🔸 Running input_analysis...")
+            state = self.input_analyzer.execute(state)
+            logger.info(f"✅ input_analysis complete")
+            
+            # Сохраняем состояние в сессии для последующих этапов
+            session_id = state.get('execution_id')
+            self._save_session(session_id, state)
+            
+            # Форматируем результат
+            return {
+                'status': 'success',
+                'session_id': session_id,
+                'execution_id': session_id,
+                'stage': 'input_analysis',
+                'storage_recommendation': state.get('storage_recommendation'),
+                'data_characteristics': state.get('data_characteristics'),
+                'optimization_recommendations': state.get('optimization_recommendations'),
+                'alternative_storages': state.get('alternative_storages'),
+                'raw_response': state.get('input_analysis_response')
+            }
+            
+        except Exception as e:
+            logger.error(f"Ошибка input_analysis: {e}")
+            return {
+                'status': 'error',
+                'error': str(e),
+                'stage': 'input_analysis'
+            }
+    
+    async def run_ddl_and_pipeline(self, session_id: str, user_choices: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Запуск генерации DDL и пайплайна (Stages 2-3)
+        После того как пользователь выбрал хранилище и параметры
+        """
+        try:
+            logger.info(f"🎯 Starting DDL and pipeline generation for session {session_id}")
+            
+            # Загружаем состояние из сессии
+            state = self._load_session(session_id)
+            if not state:
+                return {
+                    'status': 'error',
+                    'error': 'Session not found',
+                    'session_id': session_id
+                }
+            
+            # Добавляем выбор пользователя в состояние
+            state['selected_storage'] = user_choices.get('storage_type')
+            state['pipeline_params'] = user_choices.get('pipeline_params', {})
+            state['user_choices'] = user_choices
+            
+            # Запускаем DDL generation
+            logger.info(f"🔸 Running ddl_generation...")
+            state = self.ddl_generator.execute(state)
+            logger.info(f"✅ ddl_generation complete")
+            
+            # Запускаем pipeline generation
+            logger.info(f"🔸 Running pipeline_generation...")
+            state = self.pipeline_generator.execute(state)
+            logger.info(f"✅ pipeline_generation complete")
+            
+            # Сохраняем обновленное состояние
+            self._save_session(session_id, state)
+            
+            # Форматируем результат
+            return {
+                'status': 'success',
+                'session_id': session_id,
+                'execution_id': state.get('execution_id'),
+                'stages': ['ddl_generation', 'pipeline_generation'],
+                'ddl_result': state.get('ddl_result'),
+                'pipeline_result': state.get('pipeline_result'),
+                'dag_config': state.get('dag_config'),
+                'raw_responses': {
+                    'ddl': state.get('ddl_generation_response'),
+                    'pipeline': state.get('pipeline_generation_response')
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Ошибка DDL/Pipeline generation: {e}")
+            return {
+                'status': 'error',
+                'error': str(e),
+                'stages': ['ddl_generation', 'pipeline_generation']
+            }
+    
+    async def run_report_generation(self, session_id: str) -> Dict[str, Any]:
+        """
+        Запуск генерации отчета (Stage 4)
+        Отдельный процесс после всех остальных этапов
+        """
+        try:
+            logger.info(f"🎯 Starting report generation for session {session_id}")
+            
+            # Загружаем состояние из сессии
+            state = self._load_session(session_id)
+            if not state:
+                return {
+                    'status': 'error',
+                    'error': 'Session not found',
+                    'session_id': session_id
+                }
+            
+            # Запускаем report generation
+            logger.info(f"🔸 Running report_generation...")
+            state = self.report_generator.execute(state)
+            logger.info(f"✅ report_generation complete")
+            
+            # Сохраняем обновленное состояние
+            self._save_session(session_id, state)
+            
+            # Форматируем результат
+            return {
+                'status': 'success',
+                'session_id': session_id,
+                'execution_id': state.get('execution_id'),
+                'stage': 'report_generation',
+                'report': state.get('final_report'),
+                'raw_response': state.get('report_generation_response')
+            }
+            
+        except Exception as e:
+            logger.error(f"Ошибка report generation: {e}")
+            return {
+                'status': 'error',
+                'error': str(e),
+                'stage': 'report_generation'
+            }
     
     def _run_next_stage(self, state: MASState) -> MASState:
         """Выполнить следующий этап на основе состояния"""
@@ -268,7 +424,7 @@ class LLMIntegration:
         session_file = Path(f'/tmp/mas_sessions/{session_id}.json')
         return session_file.exists()
     
-    def _load_session(self, session_id: str) -> MASState:
+    def _load_session(self, session_id: str) -> Optional[MASState]:
         """
         Загрузка состояния сессии
         
@@ -276,18 +432,26 @@ class LLMIntegration:
             session_id: ID сессии
             
         Returns:
-            Сохраненное состояние
+            Сохраненное состояние или None если не найдено
         """
         import json
         
         session_file = Path(f'/tmp/mas_sessions/{session_id}.json')
         
-        with open(session_file, 'r', encoding='utf-8') as f:
-            state_dict = json.load(f)
+        if not session_file.exists():
+            logger.warning(f"Session file not found: {session_id}")
+            return None
         
-        # Преобразуем словарь обратно в MASState
-        state = MASState(**state_dict)
-        return state
+        try:
+            with open(session_file, 'r', encoding='utf-8') as f:
+                state_dict = json.load(f)
+            
+            # Преобразуем словарь обратно в MASState
+            state = MASState(**state_dict)
+            return state
+        except Exception as e:
+            logger.error(f"Failed to load session {session_id}: {e}")
+            return None
     
     def _save_session(self, session_id: str, state: MASState):
         """

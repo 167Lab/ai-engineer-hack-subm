@@ -244,17 +244,30 @@ class AgentExecutor:
         """
         context_parts = []
         
-        # Добавляем информацию о источнике данных
-        if state.get('source_config'):
-            context_parts.append(f"Конфигурация источника: {json.dumps(state['source_config'], ensure_ascii=False)}")
-        
-        # Добавляем метаданные
-        if state.get('source_metadata'):
-            context_parts.append(f"Метаданные: {json.dumps(state['source_metadata'], ensure_ascii=False)}")
-        
-        # Добавляем образец данных
-        if state.get('data_sample'):
-            context_parts.append(f"Образец данных: {state['data_sample']}")
+        # Для input_analysis передаем данные в специальном формате
+        if self.agent_name == 'input_analysis':
+            # Формируем JSON с sample и metadata
+            context_data = {
+                "sample": state.get('data_sample', []),
+                "metadata": state.get('source_metadata', {})
+            }
+            context_parts.append(json.dumps(context_data, ensure_ascii=False, indent=2))
+        else:
+            # Для остальных агентов передаем информацию как раньше
+            # Добавляем информацию о источнике данных
+            if state.get('source_config'):
+                context_parts.append(f"Конфигурация источника: {json.dumps(state['source_config'], ensure_ascii=False)}")
+            
+            # Добавляем метаданные
+            if state.get('source_metadata'):
+                context_parts.append(f"Метаданные: {json.dumps(state['source_metadata'], ensure_ascii=False)}")
+            
+            # Добавляем образец данных (ограничиваем размер)
+            if state.get('data_sample'):
+                sample = state['data_sample']
+                if len(sample) > 10:
+                    sample = sample[:10]  # Берем только первые 10 строк для контекста
+                context_parts.append(f"Образец данных (первые {len(sample)} строк): {json.dumps(sample, ensure_ascii=False)}")
         
         # Добавляем результаты предыдущих агентов
         if state.get('storage_recommendation'):

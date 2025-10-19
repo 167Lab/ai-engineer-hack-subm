@@ -28,6 +28,16 @@ export const analyzeDataSource = async (data: any) => {
   return response.data;
 };
 
+export const generatePipeline = async (data: { session_id: string; user_choices: any }) => {
+  const response = await apiClient.post('/generate_pipeline', data);
+  return response.data;
+};
+
+export const generateReport = async (data: { session_id: string }) => {
+  const response = await apiClient.post('/generate_report', data);
+  return response.data;
+};
+
 export const generateDag = async (data: any) => {
   const response = await apiClient.post('/generate_dag', data);
   return response.data;
