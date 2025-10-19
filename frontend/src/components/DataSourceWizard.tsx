@@ -772,6 +772,21 @@ const DataSourceWizard: React.FC<{ resetSignal?: number }> = ({ resetSignal }: {
             title: 'Предпросмотр и запуск',
             content: (sourceConfig && selectedStorage && pipelineConfig) ? (
                 <div>
+                    {pipelineResult && (
+                        <Card size="small" title="Результат генерации DDL и Пайплайна" style={{ marginBottom: 16 }}>
+                            <Alert
+                                message="DDL и конфигурация пайплайна успешно сгенерированы."
+                                description="Ниже вы можете увидеть DDL-скрипт. Конфигурация пайплайна будет использована для генерации DAG."
+                                type="success"
+                                showIcon
+                                style={{ marginBottom: 16 }}
+                            />
+                            <h4>DDL-скрипт</h4>
+                            <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 200, overflow: 'auto', background: '#f5f5f5', padding: '1em', border: '1px solid #eee' }}>
+                                {pipelineResult.ddl_result?.ddl_script || "DDL не был сгенерирован."}
+                            </pre>
+                        </Card>
+                    )}
                     <DAGPreview 
                         sourceConfig={sourceConfig}
                         selectedStorage={selectedStorage}

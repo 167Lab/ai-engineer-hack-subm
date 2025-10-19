@@ -10,10 +10,10 @@ llm_config:
     url: "http://ollama:11434"
     timeout: 300  # секунд
     models:
-      input_analysis: "qwen2.5:14b"   # можно использовать другие доступные, в будущем сделаем перечень поддерживаемых моделей
-      ddl_generation: "qwen2.5:14b"
-      pipeline_generation: "qwen2.5:14b"
-      report_generation: "qwen2.5:14b"
+      input_analysis: "qwen2.5:7b"   # можно использовать другие доступные, в будущем сделаем перечень поддерживаемых моделей
+      ddl_generation: "qwen2.5:7b"
+      pipeline_generation: "qwen2.5:7b"
+      report_generation: "qwen2.5:7b"
     
     # Параметры генерации
     temperature: 0.8
